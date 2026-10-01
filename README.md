@@ -91,3 +91,7 @@ Then open `http://localhost:8080`.
 ## Edge Functions
 
 No Edge Function is required for this version. OMR runs in the browser, while Supabase Auth + RLS protects teacher-owned data.
+
+
+### v3.9.1 UI fix
+The sign-in hero artwork now occupies its own responsive column and no longer overlaps the description or feature buttons.
