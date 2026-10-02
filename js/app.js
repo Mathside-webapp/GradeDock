@@ -1324,6 +1324,45 @@
     $('#cameraTab').onclick = () => switchScanMode('camera');
     $('#uploadTab').onclick = () => switchScanMode('upload');
 
+    const syncCameraOrientationUI = () => {
+      const orientation = window.GradeDockScanner?.orientation === 'landscape' ? 'landscape' : 'portrait';
+      const stage = $('.camera-stage');
+      const button = $('#cameraOrientationBtn');
+      stage?.classList.toggle('camera-landscape', orientation === 'landscape');
+      stage?.classList.toggle('camera-portrait', orientation === 'portrait');
+      if (button) {
+        button.textContent = orientation === 'portrait' ? '↕ Portrait' : '↔ Landscape';
+        button.setAttribute('aria-pressed', orientation === 'portrait' ? 'true' : 'false');
+        button.title = orientation === 'portrait' ? 'Switch camera preview to landscape' : 'Switch camera preview to portrait';
+      }
+    };
+    window.GradeDockScanner?.setOrientation?.('portrait');
+    syncCameraOrientationUI();
+
+    $('#cameraOrientationBtn').onclick = async () => {
+      if (!requireScanContext()) return;
+      const video = $('#cameraVideo');
+      const wasRunning = Boolean(window.GradeDockScanner?.stream);
+      const orientation = window.GradeDockScanner.toggleOrientation();
+      syncCameraOrientationUI();
+      $('#scanStatusText').textContent = `${orientation === 'portrait' ? 'Portrait' : 'Landscape'} camera view selected.`;
+      if (!wasRunning) return;
+      const button = $('#cameraOrientationBtn');
+      button.disabled = true;
+      try {
+        await window.GradeDockScanner.startCamera(video);
+        $('#cameraPlaceholder').classList.add('hidden');
+        $('#captureBtn').disabled = false;
+        $('#scanStatusText').textContent = `${orientation === 'portrait' ? 'Portrait' : 'Landscape'} camera ready. Keep the whole sheet inside the guide.`;
+      } catch (err) {
+        $('#captureBtn').disabled = true;
+        $('#scanStatusText').textContent = err.message;
+        toast(err.message, 'warn');
+      } finally {
+        button.disabled = false;
+      }
+    };
+
     $('#startCameraBtn').onclick = async () => {
       const context = requireScanContext();
       if (!context) return;
