@@ -107,3 +107,61 @@
 
 /* v3.10: six analysis summary metrics fit in two rows. */
 @media(min-width:761px){.analysis-summary-grid{grid-template-columns:repeat(3,1fr)}}
+
+
+/* =====================================================================
+   GradeDock v3.11 — portrait-first camera with orientation toggle
+   ===================================================================== */
+.camera-stage.camera-portrait,
+.camera-stage:not(.camera-landscape){
+  aspect-ratio:3/4;
+  width:min(100%,520px);
+  margin-left:auto;
+  margin-right:auto;
+}
+.camera-stage.camera-landscape{
+  aspect-ratio:4/3;
+  width:100%;
+  max-width:none;
+}
+#cameraOrientationBtn{white-space:nowrap}
+
+@media(max-width:760px){
+  /* Keep the live POV tall enough for a paper, but short enough that Capture
+     stays immediately underneath it on a phone. */
+  .camera-stage.camera-portrait,
+  .camera-stage:not(.camera-landscape){
+    width:min(100%,calc(56dvh * .75));
+    max-width:100%;
+  }
+  .camera-stage.camera-landscape{width:100%;}
+  .camera-actions{
+    display:flex!important;
+    flex-wrap:wrap!important;
+    gap:6px!important;
+    margin-top:8px!important;
+  }
+  .camera-actions #captureBtn{
+    order:-1;
+    flex:1 0 100%!important;
+    width:100%!important;
+    min-height:48px;
+    margin-left:0!important;
+    font-size:13px!important;
+  }
+  .camera-actions #startCameraBtn,
+  .camera-actions #switchCameraBtn,
+  .camera-actions #cameraOrientationBtn{
+    flex:1 1 calc(33.333% - 6px)!important;
+    min-width:0;
+    padding:8px 6px!important;
+    font-size:9.5px!important;
+  }
+}
+@media(max-width:390px){
+  .camera-stage.camera-portrait,
+  .camera-stage:not(.camera-landscape){width:min(100%,calc(52dvh * .75));}
+  .camera-actions #startCameraBtn,
+  .camera-actions #switchCameraBtn,
+  .camera-actions #cameraOrientationBtn{font-size:8.7px!important;padding-inline:4px!important}
+}
