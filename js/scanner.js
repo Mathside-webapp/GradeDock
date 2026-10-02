@@ -2,6 +2,7 @@
   const Scanner = {
     stream: null,
     facingMode: 'environment',
+    orientation: 'portrait',
 
     async startCamera(video) {
       this.stopCamera(video);
@@ -12,11 +13,13 @@
         throw new Error('Live camera is not available in this browser. Use Take photo instead or Upload image.');
       }
 
+      const portrait = this.orientation !== 'landscape';
       const preferred = {
         video: {
           facingMode: { ideal: this.facingMode },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          width: { ideal: portrait ? 1080 : 1920 },
+          height: { ideal: portrait ? 1920 : 1080 },
+          aspectRatio: { ideal: portrait ? 0.75 : (4 / 3) }
         },
         audio: false
       };
@@ -58,6 +61,15 @@
     async switchCamera(video) {
       this.facingMode = this.facingMode === 'environment' ? 'user' : 'environment';
       return this.startCamera(video);
+    },
+
+    setOrientation(value) {
+      this.orientation = value === 'landscape' ? 'landscape' : 'portrait';
+      return this.orientation;
+    },
+
+    toggleOrientation() {
+      return this.setOrientation(this.orientation === 'portrait' ? 'landscape' : 'portrait');
     },
 
     capture(video, canvas) {
