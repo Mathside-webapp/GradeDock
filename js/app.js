@@ -13,6 +13,10 @@
     currentPage: 'dashboard'
   };
 
+  let cameraAssistTimer = null;
+  let cameraAssistBusy = false;
+  let cameraAssistLastState = '';
+
   const subtitles = {
     dashboard: 'Overview of your classes and assessments',
     classes: 'Organize grade levels and sections',
@@ -78,6 +82,12 @@
   }
 
   function go(page) {
+    if (page !== 'scan' && state.currentPage === 'scan') {
+      stopCameraAssist();
+      window.GradeDockScanner?.stopCamera?.($('#cameraVideo'));
+      $('#cameraPlaceholder')?.classList.remove('hidden');
+      if ($('#captureBtn')) $('#captureBtn').disabled = true;
+    }
     state.currentPage = page;
     $$('.page').forEach(x => x.classList.remove('active'));
     $(`#page-${page}`).classList.add('active');
@@ -779,12 +789,14 @@
           note.className = 'ocr-warn';
         }
       });
+      return true;
     } catch (err) {
       state.scan = null;
       $('#scanConfidence').textContent = 'Needs retake';
       $('#scanConfidence').className = 'badge warn';
       $('#scanStatusText').textContent = err.message;
       toast(err.message, 'warn');
+      return false;
     }
   }
 
@@ -937,6 +949,7 @@
       successModal('Scan complete', `${name}'s paper was scanned and saved successfully.`, `${r.correct}/${r.total} • ${r.percentage}% • ${r.className}`, 'Scan next paper', () => {
         go('scan');
         $('#scanStatusText').textContent = `Ready for the next ${r.className} paper.`;
+        if (window.GradeDockScanner?.stream) startCameraAssist();
       });
     } catch (err) { closeModal(); toast(err.message, 'warn'); }
   }
@@ -1253,12 +1266,69 @@
     } catch (err) { closeModal(); toast(err.message, 'warn'); }
   }
 
+  function setCameraAssistStatus(status = {}, visible = true) {
+    const box = $('#cameraScanAssist');
+    if (!box) return;
+    if (!visible) { box.classList.add('hidden'); return; }
+    const stateName = status.state || 'searching';
+    box.classList.remove('hidden', 'state-starting', 'state-searching', 'state-focus', 'state-warn', 'state-ready', 'state-reading');
+    box.classList.add(`state-${stateName}`);
+    const title = $('#cameraScanAssistTitle');
+    const text = $('#cameraScanAssistText');
+    const icon = $('#cameraScanAssistIcon');
+    const label = box.querySelector('.camera-scan-assist-label');
+    if (label) label.textContent = stateName === 'ready' ? 'READY' : stateName === 'reading' ? 'CHECKING' : 'SCANNING';
+    if (title) title.textContent = status.title || 'Looking for answer sheet…';
+    if (text) text.textContent = status.text || 'Keep the whole sheet visible and hold the camera steady.';
+    if (icon) icon.textContent = stateName === 'ready' ? '✓' : stateName === 'warn' ? '!' : stateName === 'focus' ? '◉' : stateName === 'reading' ? '⌗' : '⌗';
+
+    if (stateName === 'ready' && cameraAssistLastState !== 'ready' && navigator.vibrate) {
+      try { navigator.vibrate(35); } catch (_) {}
+    }
+    cameraAssistLastState = stateName;
+  }
+
+  function stopCameraAssist(hide = true) {
+    if (cameraAssistTimer) clearInterval(cameraAssistTimer);
+    cameraAssistTimer = null;
+    cameraAssistBusy = false;
+    cameraAssistLastState = '';
+    if (hide) setCameraAssistStatus({}, false);
+  }
+
+  function updateCameraAssist() {
+    if (cameraAssistBusy || !window.GradeDockScanner?.stream) return;
+    const video = $('#cameraVideo');
+    if (!video) return;
+    cameraAssistBusy = true;
+    try {
+      const status = window.GradeDockScanner.inspectFrame(video);
+      setCameraAssistStatus(status, true);
+    } catch (err) {
+      setCameraAssistStatus({ state: 'searching', title: 'Looking for answer sheet…', text: 'Keep the entire paper visible and hold the camera steady.' }, true);
+    } finally {
+      cameraAssistBusy = false;
+    }
+  }
+
+  function startCameraAssist() {
+    stopCameraAssist(false);
+    setCameraAssistStatus({ state: 'starting', title: 'Looking for answer sheet…', text: 'Keep the whole sheet visible. GradeDock will tell you when the paper is readable.' }, true);
+    updateCameraAssist();
+    cameraAssistTimer = setInterval(updateCameraAssist, 550);
+  }
+
   function switchScanMode(mode) {
     $('#cameraTab').classList.toggle('active', mode === 'camera');
     $('#uploadTab').classList.toggle('active', mode === 'upload');
     $('#cameraMode').classList.toggle('active', mode === 'camera');
     $('#uploadMode').classList.toggle('active', mode === 'upload');
-    if (mode === 'upload') window.GradeDockScanner.stopCamera();
+    if (mode === 'upload') {
+      stopCameraAssist();
+      window.GradeDockScanner.stopCamera($('#cameraVideo'));
+      $('#cameraPlaceholder')?.classList.remove('hidden');
+      if ($('#captureBtn')) $('#captureBtn').disabled = true;
+    }
   }
 
   function bind() {
@@ -1313,7 +1383,8 @@
     $('#previewItemAnalysisBtn').onclick = previewItemAnalysis;
     $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('open');
     $('#signoutBtn').onclick = async () => {
-      window.GradeDockScanner.stopCamera();
+      stopCameraAssist();
+      window.GradeDockScanner.stopCamera($('#cameraVideo'));
       processModal('Signing you out…', 'Closing your GradeDock workspace safely.');
       try {
         await Store.signout();
@@ -1345,7 +1416,7 @@
       const wasRunning = Boolean(window.GradeDockScanner?.stream);
       const orientation = window.GradeDockScanner.toggleOrientation();
       syncCameraOrientationUI();
-      $('#scanStatusText').textContent = `${orientation === 'portrait' ? 'Portrait' : 'Landscape'} view selected. Keep all four guide boxes visible.`;
+      $('#scanStatusText').textContent = `${orientation === 'portrait' ? 'Portrait' : 'Landscape'} view selected.`;
       if (!wasRunning) return;
       const button = $('#cameraOrientationBtn');
       button.disabled = true;
@@ -1353,8 +1424,10 @@
         await window.GradeDockScanner.startCamera(video);
         $('#cameraPlaceholder').classList.add('hidden');
         $('#captureBtn').disabled = false;
-        $('#scanStatusText').textContent = `${orientation === 'portrait' ? 'Portrait' : 'Landscape'} camera ready. Align all four sheet markers with the numbered guide boxes.`;
+        startCameraAssist();
+        $('#scanStatusText').textContent = `${orientation === 'portrait' ? 'Portrait' : 'Landscape'} camera ready. Follow the live scanning message below the camera.`;
       } catch (err) {
+        stopCameraAssist();
         $('#captureBtn').disabled = true;
         $('#scanStatusText').textContent = err.message;
         toast(err.message, 'warn');
@@ -1376,11 +1449,11 @@
         $('#cameraPlaceholder').classList.add('hidden');
         $('#captureBtn').disabled = false;
         startBtn.textContent = 'Restart camera';
-        if (help) help.textContent = 'Camera is ready. Keep the whole answer sheet and all four black corner markers visible.';
-        const guideHelp = $('#cameraGuideHelp');
-        if (guideHelp) guideHelp.classList.remove('hidden');
-        $('#scanStatusText').textContent = 'Camera ready. Align the answer sheet inside the guide, then capture.';
+        if (help) help.textContent = 'Need another method? You can take a photo with your device camera instead.';
+        startCameraAssist();
+        $('#scanStatusText').textContent = 'Camera ready. Follow the live scanning message below the camera.';
       } catch (err) {
+        stopCameraAssist();
         startBtn.textContent = 'Start camera';
         $('#captureBtn').disabled = true;
         if (help) help.textContent = err.message;
@@ -1397,8 +1470,10 @@
         await window.GradeDockScanner.switchCamera($('#cameraVideo'));
         $('#cameraPlaceholder').classList.add('hidden');
         $('#captureBtn').disabled = false;
-        $('#scanStatusText').textContent = 'Camera switched. Align the sheet and capture.';
+        startCameraAssist();
+        $('#scanStatusText').textContent = 'Camera switched. Follow the live scanning message below the camera.';
       } catch (err) {
+        stopCameraAssist();
         $('#scanStatusText').textContent = err.message;
         toast(err.message, 'warn');
       }
@@ -1406,9 +1481,13 @@
 
     $('#captureBtn').onclick = async () => {
       if (!requireScanContext()) return;
+      stopCameraAssist(false);
+      setCameraAssistStatus({ state: 'reading', title: 'Reading answer sheet…', text: 'Keep the paper steady while GradeDock checks the markers and bubbles.' }, true);
       const canvas = window.GradeDockScanner.capture($('#cameraVideo'), $('#captureCanvas'));
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-      processCanvas(canvas, blob);
+      const ok = await processCanvas(canvas, blob);
+      if (ok) stopCameraAssist();
+      else if (window.GradeDockScanner?.stream) startCameraAssist();
     };
 
     $('#cameraFallbackFile').onchange = async e => {

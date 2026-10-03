@@ -72,6 +72,68 @@
       return this.setOrientation(this.orientation === 'portrait' ? 'landscape' : 'portrait');
     },
 
+    inspectFrame(video) {
+      const vw = Number(video?.videoWidth || 0), vh = Number(video?.videoHeight || 0);
+      if (!vw || !vh) {
+        return { state: 'starting', ready: false, title: 'Starting camera…', text: 'Wait a moment while the camera focuses.' };
+      }
+
+      // Keep this lightweight: the live helper runs repeatedly on phones.
+      const maxW = 360;
+      const scale = Math.min(1, maxW / vw);
+      const w = Math.max(1, Math.round(vw * scale));
+      const h = Math.max(1, Math.round(vh * scale));
+      if (!this._assistCanvas) this._assistCanvas = document.createElement('canvas');
+      const canvas = this._assistCanvas;
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, w, h);
+      const data = ctx.getImageData(0, 0, w, h).data;
+      const grayAt = (x, y) => {
+        const i = (y * w + x) * 4;
+        return data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114;
+      };
+
+      let sum = 0, samples = 0, edge = 0;
+      const step = 6;
+      for (let y = step; y < h - step; y += step) {
+        for (let x = step; x < w - step; x += step) {
+          const g = grayAt(x, y);
+          sum += g; samples++;
+          edge += Math.abs(g - grayAt(x + step, y)) + Math.abs(g - grayAt(x, y + step));
+        }
+      }
+      const mean = samples ? sum / samples : 0;
+      const sharpness = samples ? edge / (samples * 2) : 0;
+
+      if (mean < 58) {
+        return { state: 'warn', ready: false, title: 'More light needed', text: 'Move to a brighter area and avoid casting a shadow over the paper.', mean, sharpness };
+      }
+      if (mean > 253.5) {
+        return { state: 'warn', ready: false, title: 'Image is too bright', text: 'Move away from direct glare or bright reflections on the answer sheet.', mean, sharpness };
+      }
+      if (sharpness < 4.2) {
+        return { state: 'focus', ready: false, title: 'Hold the camera steady', text: 'Give the camera a moment to focus before capturing.', mean, sharpness };
+      }
+
+      try {
+        const markers = this.findMarkers(canvas);
+        return {
+          state: 'ready', ready: true,
+          title: 'Answer sheet detected',
+          text: 'Keep the whole paper flat and steady, then tap Capture & check.',
+          markers, mean, sharpness
+        };
+      } catch (err) {
+        return {
+          state: 'searching', ready: false,
+          title: 'Position the whole answer sheet',
+          text: 'Keep all four printed black corner markers visible. Move closer or farther until the full paper is in view.',
+          mean, sharpness, reason: err?.message || ''
+        };
+      }
+    },
+
     capture(video, canvas) {
       const w = video.videoWidth, h = video.videoHeight;
       if (!w || !h) throw new Error('Camera is not ready yet.');
@@ -115,7 +177,7 @@
           const bw=maxX-minX+1,bh=maxY-minY+1,box=bw*bh, ratio=bw/bh, fill=area/box;
           if(area>35 && ratio>.55 && ratio<1.65 && fill>.45 && bw<rw*.35 && bh<rh*.35) comps.push({area,bw,bh,cx:(minX+maxX)/2,cy:(minY+maxY)/2,fill});
         }}
-        if(!comps.length) throw new Error(`Could not find the ${name.toUpperCase()} registration marker. Keep all four black squares visible.`);
+        if(!comps.length) throw new Error('GradeDock could not read the whole answer sheet. Keep all four printed black corner markers visible, hold the paper flat, and try again.');
         const corner = name==='tl'?[0,0]:name==='tr'?[sw,0]:name==='bl'?[0,sh]:[sw,sh];
         comps.forEach(c=>{const d=Math.hypot(c.cx-corner[0],c.cy-corner[1]);c.score=c.area*2-d*.35;});
         comps.sort((a,b)=>b.score-a.score); const best=comps[0];
@@ -133,7 +195,7 @@
       }
       for(let col=0;col<8;col++){
         let pivot=col; for(let r=col+1;r<8;r++) if(Math.abs(A[r][col])>Math.abs(A[pivot][col])) pivot=r;
-        [A[col],A[pivot]]=[A[pivot],A[col]]; const div=A[col][col]; if(Math.abs(div)<1e-9) throw new Error('Could not correct page perspective. Retake the photo more directly above the sheet.');
+        [A[col],A[pivot]]=[A[pivot],A[col]]; const div=A[col][col]; if(Math.abs(div)<1e-9) throw new Error('The paper is too tilted to read reliably. Hold the camera more directly above the sheet and try again.');
         for(let c=col;c<9;c++) A[col][c]/=div;
         for(let r=0;r<8;r++){ if(r===col)continue; const f=A[r][col]; for(let c=col;c<9;c++) A[r][c]-=f*A[col][c]; }
       }
