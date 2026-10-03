@@ -104,13 +104,15 @@
             <div id="cameraMode" class="scan-mode active">
               <div class="camera-stage">
                 <video id="cameraVideo" playsinline autoplay muted></video>
-                <div class="camera-placeholder" id="cameraPlaceholder"><span>📷</span><strong>Camera is off</strong><small>Select a section and exam, start the camera, then align all four sheet markers inside the guide.</small></div>
-                <div class="camera-guide"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
+                <div class="camera-placeholder" id="cameraPlaceholder"><span>📷</span><strong>Camera is off</strong><small>Select a section and exam, then start the camera. GradeDock will tell you how to position the paper.</small></div>
               </div>
-              <div class="camera-guide-help" id="cameraGuideHelp">
-                <span class="camera-guide-label">4-MARKER GUIDE</span>
-                <strong>Match all four black corner squares on the answer sheet with the four blue target boxes.</strong>
-                <small>Keep the whole paper visible, flat, and inside the camera view before you capture.</small>
+              <div id="cameraScanAssist" class="camera-scan-assist hidden" role="status" aria-live="polite">
+                <span class="camera-scan-assist-icon" id="cameraScanAssistIcon" aria-hidden="true">⌗</span>
+                <div class="camera-scan-assist-copy">
+                  <span class="camera-scan-assist-label">SCANNING</span>
+                  <strong id="cameraScanAssistTitle">Looking for answer sheet…</strong>
+                  <small id="cameraScanAssistText">Keep the whole sheet visible and hold the camera steady.</small>
+                </div>
               </div>
               <div class="camera-actions"><button id="startCameraBtn" class="btn btn-soft">Start camera</button><button id="switchCameraBtn" class="btn btn-soft">Switch camera</button><button id="cameraOrientationBtn" class="btn btn-soft" type="button" aria-pressed="false">↔ Landscape</button><button id="captureBtn" class="btn btn-primary" disabled>📸 Capture & check</button></div>
               <div class="camera-fallback"><span id="cameraHelpText">If live camera is blocked, you can take a photo using your device camera instead.</span><label class="btn btn-soft btn-compact" for="cameraFallbackFile">Take photo instead</label><input id="cameraFallbackFile" type="file" accept="image/*" capture="environment" hidden /></div>
@@ -160,8 +162,8 @@
   <script src="js/config.js"></script>
   <script src="js/sheet.js"></script>
   <script src="js/excel.js"></script>
-  <script src="js/scanner.js?v=3.12"></script>
-  <script src="js/store.js?v=3.12"></script>
-  <script src="js/app.js?v=3.12"></script>
+  <script src="js/scanner.js?v=3.14"></script>
+  <script src="js/store.js?v=3.14"></script>
+  <script src="js/app.js?v=3.14"></script>
 </body>
 </html>
