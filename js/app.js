@@ -795,6 +795,9 @@
       $('#scanConfidence').textContent = 'Needs retake';
       $('#scanConfidence').className = 'badge warn';
       $('#scanStatusText').textContent = err.message;
+      if (window.GradeDockScanner?.stream) {
+        setCameraAssistStatus({ state: 'warn', title: 'Not ready to scan', text: 'Reposition the paper, wait for a green GOOD TO SCAN message, then retry.' }, true);
+      }
       toast(err.message, 'warn');
       return false;
     }
@@ -833,7 +836,7 @@
         </div>`;
       }).join('')}
       </div>
-      <div class="save-scan"><div class="scanned-name-wrap"><input id="scannedStudentName" required placeholder="Student name"><small id="nameOcrStatus">Reading the handwritten name…</small></div><button id="saveScanBtn" class="btn btn-primary" ${r.uncertain ? 'disabled' : ''}>Save to ${esc(r.className)}</button></div>`;
+      <div class="save-scan"><div class="scanned-name-wrap"><input id="scannedStudentName" required placeholder="Student name"><small id="nameOcrStatus">Reading the handwritten name…</small></div><div class="scan-save-actions"><button id="retryScanBtn" type="button" class="btn btn-soft">↻ Retry scan</button><button id="saveScanBtn" class="btn btn-primary" ${r.uncertain ? 'disabled' : ''}>Save to ${esc(r.className)}</button></div></div>`;
 
     const updateChip = a => {
       const chip = $(`[data-answer-chip="${a.question}"]`);
@@ -884,7 +887,26 @@
       }
     });
 
+    $('#retryScanBtn').onclick = retryScan;
     $('#saveScanBtn').onclick = saveScan;
+  }
+
+  function retryScan() {
+    state.scan = null;
+    state.scanImageBlob = null;
+    $('#scanResult').classList.add('hidden');
+    $('#scanResult').innerHTML = '';
+    $('#scanEmpty').classList.remove('hidden');
+    $('#scanConfidence').textContent = 'Waiting';
+    $('#scanConfidence').className = 'badge neutral';
+    $('#scanStatusText').textContent = 'Ready to retry. Position the answer sheet and scan again.';
+    if (window.GradeDockScanner?.stream) {
+      startCameraAssist();
+      const stage = $('.camera-stage');
+      stage?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if ($('#cameraMode')?.classList.contains('active')) {
+      $('#startCameraBtn')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }
 
   function recalcScan() {
@@ -1277,10 +1299,10 @@
     const text = $('#cameraScanAssistText');
     const icon = $('#cameraScanAssistIcon');
     const label = box.querySelector('.camera-scan-assist-label');
-    if (label) label.textContent = stateName === 'ready' ? 'READY' : stateName === 'reading' ? 'CHECKING' : 'SCANNING';
-    if (title) title.textContent = status.title || 'Looking for answer sheet…';
+    if (label) label.textContent = stateName === 'ready' ? 'GOOD TO SCAN' : stateName === 'reading' ? 'CHECKING' : 'NOT READY';
+    if (title) title.textContent = status.title || 'Position the answer sheet';
     if (text) text.textContent = status.text || 'Keep the whole sheet visible and hold the camera steady.';
-    if (icon) icon.textContent = stateName === 'ready' ? '✓' : stateName === 'warn' ? '!' : stateName === 'focus' ? '◉' : stateName === 'reading' ? '⌗' : '⌗';
+    if (icon) icon.textContent = stateName === 'ready' ? '✓' : stateName === 'reading' ? '⌗' : '!';
 
     if (stateName === 'ready' && cameraAssistLastState !== 'ready' && navigator.vibrate) {
       try { navigator.vibrate(35); } catch (_) {}
@@ -1313,7 +1335,7 @@
 
   function startCameraAssist() {
     stopCameraAssist(false);
-    setCameraAssistStatus({ state: 'starting', title: 'Looking for answer sheet…', text: 'Keep the whole sheet visible. GradeDock will tell you when the paper is readable.' }, true);
+    setCameraAssistStatus({ state: 'starting', title: 'Not ready to scan', text: 'Show the whole answer sheet and hold the phone steady.' }, true);
     updateCameraAssist();
     cameraAssistTimer = setInterval(updateCameraAssist, 550);
   }
@@ -1483,8 +1505,9 @@
       if (!requireScanContext()) return;
       stopCameraAssist(false);
       setCameraAssistStatus({ state: 'reading', title: 'Reading answer sheet…', text: 'Keep the paper steady while GradeDock checks the markers and bubbles.' }, true);
-      const canvas = window.GradeDockScanner.capture($('#cameraVideo'), $('#captureCanvas'));
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+      const captured = await window.GradeDockScanner.captureBestFrame($('#cameraVideo'), $('#captureCanvas'));
+      const canvas = captured.canvas;
+      const blob = captured.blob;
       const ok = await processCanvas(canvas, blob);
       if (ok) stopCameraAssist();
       else if (window.GradeDockScanner?.stream) startCameraAssist();
