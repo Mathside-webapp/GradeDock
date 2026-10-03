@@ -104,14 +104,12 @@
             <div id="cameraMode" class="scan-mode active">
               <div class="camera-stage">
                 <video id="cameraVideo" playsinline autoplay muted></video>
-                <div class="camera-placeholder" id="cameraPlaceholder"><span>📷</span><strong>Camera is off</strong><small>Select a section and exam, then start the camera. GradeDock will tell you how to position the paper.</small></div>
-              </div>
-              <div id="cameraScanAssist" class="camera-scan-assist hidden" role="status" aria-live="polite">
-                <span class="camera-scan-assist-icon" id="cameraScanAssistIcon" aria-hidden="true">⌗</span>
-                <div class="camera-scan-assist-copy">
-                  <span class="camera-scan-assist-label">SCANNING</span>
-                  <strong id="cameraScanAssistTitle">Looking for answer sheet…</strong>
-                  <small id="cameraScanAssistText">Keep the whole sheet visible and hold the camera steady.</small>
+                <div class="camera-placeholder" id="cameraPlaceholder"><span>📷</span><strong>Camera is off</strong><small>Select a section and exam, then start the camera. GradeDock will tell you when the image is ready to scan.</small></div>
+                <div id="cameraScanAssist" class="camera-scan-assist hidden" role="status" aria-live="polite">
+                  <span class="camera-scan-assist-label">NOT READY</span>
+                  <strong id="cameraScanAssistTitle">Position the answer sheet</strong>
+                  <small id="cameraScanAssistText">Keep the whole paper visible and wait for GOOD TO SCAN.</small>
+                  <span class="camera-scan-assist-icon" id="cameraScanAssistIcon" aria-hidden="true">!</span>
                 </div>
               </div>
               <div class="camera-actions"><button id="startCameraBtn" class="btn btn-soft">Start camera</button><button id="switchCameraBtn" class="btn btn-soft">Switch camera</button><button id="cameraOrientationBtn" class="btn btn-soft" type="button" aria-pressed="false">↔ Landscape</button><button id="captureBtn" class="btn btn-primary" disabled>📸 Capture & check</button></div>
@@ -162,8 +160,8 @@
   <script src="js/config.js"></script>
   <script src="js/sheet.js"></script>
   <script src="js/excel.js"></script>
-  <script src="js/scanner.js?v=3.14"></script>
-  <script src="js/store.js?v=3.14"></script>
-  <script src="js/app.js?v=3.14"></script>
+  <script src="js/scanner.js?v=3.15"></script>
+  <script src="js/store.js?v=3.15"></script>
+  <script src="js/app.js?v=3.15"></script>
 </body>
 </html>
