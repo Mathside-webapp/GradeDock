@@ -282,3 +282,108 @@
   .camera-scan-assist small{font-size:8.7px}
   .camera-scan-assist-label{font-size:7px}
 }
+
+/* =====================================================================
+   GradeDock v3.15 — camera quality bar + scan retry + stronger containment
+   ===================================================================== */
+.camera-stage{position:relative!important;overflow:hidden!important}
+.camera-scan-assist{
+  position:absolute!important;
+  left:8px!important;
+  right:8px!important;
+  bottom:8px!important;
+  z-index:8!important;
+  display:grid!important;
+  grid-template-columns:auto 1fr auto!important;
+  align-items:center!important;
+  gap:8px!important;
+  margin:0!important;
+  padding:9px 11px!important;
+  border:0!important;
+  border-radius:10px!important;
+  background:rgba(185,28,28,.94)!important;
+  color:#fff!important;
+  box-shadow:0 5px 18px rgba(0,0,0,.28)!important;
+  backdrop-filter:blur(3px);
+}
+.camera-scan-assist.hidden{display:none!important}
+.camera-scan-assist.state-starting,
+.camera-scan-assist.state-searching,
+.camera-scan-assist.state-focus,
+.camera-scan-assist.state-warn{
+  background:rgba(185,28,28,.94)!important;
+  color:#fff!important;
+}
+.camera-scan-assist.state-ready{
+  background:rgba(21,128,61,.95)!important;
+  color:#fff!important;
+}
+.camera-scan-assist.state-reading{
+  background:rgba(29,78,216,.95)!important;
+  color:#fff!important;
+}
+.camera-scan-assist-label{
+  grid-column:1!important;
+  grid-row:1/3!important;
+  align-self:center!important;
+  width:auto!important;
+  min-width:72px!important;
+  padding:5px 7px!important;
+  border:1px solid rgba(255,255,255,.45)!important;
+  border-radius:7px!important;
+  background:rgba(255,255,255,.14)!important;
+  color:#fff!important;
+  font-size:8px!important;
+  line-height:1.05!important;
+  text-align:center!important;
+  letter-spacing:.06em!important;
+}
+.camera-scan-assist-copy{display:contents!important}
+.camera-scan-assist strong{
+  grid-column:2!important;
+  grid-row:1!important;
+  color:#fff!important;
+  font-size:11px!important;
+  line-height:1.15!important;
+  white-space:normal!important;
+}
+.camera-scan-assist small{
+  grid-column:2!important;
+  grid-row:2!important;
+  color:rgba(255,255,255,.9)!important;
+  font-size:9px!important;
+  line-height:1.2!important;
+  white-space:normal!important;
+}
+.camera-scan-assist-icon{
+  grid-column:3!important;
+  grid-row:1/3!important;
+  width:28px!important;
+  height:28px!important;
+  flex-basis:28px!important;
+  border-radius:50%!important;
+  background:rgba(255,255,255,.18)!important;
+  color:#fff!important;
+  border:1px solid rgba(255,255,255,.35)!important;
+  font-size:14px!important;
+}
+.camera-scan-assist.state-ready .camera-scan-assist-icon,
+.camera-scan-assist.state-ready .camera-scan-assist-label,
+.camera-scan-assist.state-reading .camera-scan-assist-icon,
+.camera-scan-assist.state-reading .camera-scan-assist-label{
+  background:rgba(255,255,255,.16)!important;
+  color:#fff!important;
+}
+.scan-save-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;min-width:0}
+.scan-save-actions .btn{white-space:nowrap}
+
+@media(max-width:760px){
+  .camera-scan-assist{left:6px!important;right:6px!important;bottom:6px!important;padding:8px 9px!important;gap:7px!important;border-radius:9px!important}
+  .camera-scan-assist-label{min-width:62px!important;font-size:7px!important;padding:5px!important}
+  .camera-scan-assist strong{font-size:10px!important}
+  .camera-scan-assist small{font-size:8px!important}
+  .camera-scan-assist-icon{width:25px!important;height:25px!important;flex-basis:25px!important;font-size:12px!important}
+  .save-scan{grid-template-columns:1fr!important}
+  .scan-save-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}
+  .scan-save-actions .btn{width:100%;min-width:0;white-space:normal}
+}
