@@ -772,7 +772,7 @@
       state.scanImageBlob = blob;
       renderScanResult();
       const activeScan = state.scan;
-      window.GradeDockScanner.readStudentName(canvas, result.homography).then(ocr => {
+      window.GradeDockScanner.readStudentName(canvas, result.homography, result.orientationTransform).then(ocr => {
         if (state.scan !== activeScan) return;
         const input = $('#scannedStudentName');
         const note = $('#nameOcrStatus');
@@ -809,9 +809,10 @@
     $('#scanResult').classList.remove('hidden');
     $('#scanConfidence').textContent = `${r.confidence}% confidence`;
     $('#scanConfidence').className = `badge ${r.uncertain ? 'warn' : 'good'}`;
+    const mirrorNote = r.cameraMirrorCorrected ? ' Camera orientation was corrected automatically.' : '';
     $('#scanStatusText').textContent = r.uncertain
-      ? `${r.uncertain} response${r.uncertain === 1 ? '' : 's'} need teacher confirmation before saving to ${r.className}.`
-      : `All responses were read clearly. This result will be saved to ${r.className}.`;
+      ? `${r.uncertain} response${r.uncertain === 1 ? '' : 's'} need teacher confirmation before saving to ${r.className}.${mirrorNote}`
+      : `All responses were read clearly. This result will be saved to ${r.className}.${mirrorNote}`;
 
     const choices = ['', ...Array.from({ length: Number(r.exam.choice_count || 4) }, (_, i) => String.fromCharCode(65 + i))];
     const stateLabel = a => {
@@ -1291,9 +1292,14 @@
   function setCameraAssistStatus(status = {}, visible = true) {
     const box = $('#cameraScanAssist');
     if (!box) return;
-    if (!visible) { box.classList.add('hidden'); return; }
+    if (!visible) {
+      box.classList.add('hidden');
+      box.style.setProperty('display', 'none', 'important');
+      return;
+    }
     const stateName = status.state || 'searching';
     box.classList.remove('hidden', 'state-starting', 'state-searching', 'state-focus', 'state-warn', 'state-ready', 'state-reading');
+    box.style.setProperty('display', 'grid', 'important');
     box.classList.add(`state-${stateName}`);
     const title = $('#cameraScanAssistTitle');
     const text = $('#cameraScanAssistText');
