@@ -221,3 +221,64 @@
   .camera-actions #captureBtn{grid-column:1/-1!important;width:100%!important;margin:0!important;min-height:44px!important;font-size:12px!important;}
   .camera-stage.camera-portrait{width:min(100%,calc(56dvh * .75))!important;max-width:100%!important;}
 }
+
+/* =====================================================================
+   GradeDock v3.14 — guide-free live scanning assistant
+   Inspired by scanner apps that give continuous readiness messages rather
+   than requiring the user to trace fixed on-screen corner boxes.
+   ===================================================================== */
+.camera-guide,.camera-guide-help{display:none!important}
+.camera-scan-assist{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  margin-top:9px;
+  padding:10px 12px;
+  border:1px solid #dbe5f4;
+  border-radius:11px;
+  background:#f8fafc;
+  color:#334155;
+  box-shadow:0 4px 14px rgba(15,23,42,.04);
+  transition:background .18s,border-color .18s,color .18s;
+}
+.camera-scan-assist-icon{
+  flex:0 0 34px;
+  width:34px;
+  height:34px;
+  border-radius:10px;
+  display:grid;
+  place-items:center;
+  background:#e7eef8;
+  color:#3b5b86;
+  font-size:16px;
+  font-weight:950;
+}
+.camera-scan-assist-copy{min-width:0;display:grid;gap:2px}
+.camera-scan-assist-label{
+  width:max-content;
+  padding:2px 6px;
+  border-radius:999px;
+  background:#e7eef8;
+  color:#4b6382;
+  font-size:7.5px;
+  font-weight:950;
+  letter-spacing:.09em;
+}
+.camera-scan-assist strong{font-size:11px;line-height:1.25}
+.camera-scan-assist small{font-size:9.5px;line-height:1.35;color:#6b778b}
+.camera-scan-assist.state-focus{background:#f6f9ff;border-color:#cdddf9}
+.camera-scan-assist.state-focus .camera-scan-assist-icon,.camera-scan-assist.state-focus .camera-scan-assist-label{background:#e8f0ff;color:#315fae}
+.camera-scan-assist.state-warn{background:#fffaf0;border-color:#f3ddb0}
+.camera-scan-assist.state-warn .camera-scan-assist-icon,.camera-scan-assist.state-warn .camera-scan-assist-label{background:#fff0cc;color:#9a5a08}
+.camera-scan-assist.state-ready{background:#f1fbf4;border-color:#bce6c7;color:#14532d}
+.camera-scan-assist.state-ready .camera-scan-assist-icon,.camera-scan-assist.state-ready .camera-scan-assist-label{background:#dff5e5;color:#157238}
+.camera-scan-assist.state-ready small{color:#4e715b}
+.camera-scan-assist.state-reading{background:#eef5ff;border-color:#bcd2f8;color:#173d7a}
+.camera-scan-assist.state-reading .camera-scan-assist-icon,.camera-scan-assist.state-reading .camera-scan-assist-label{background:#dce9ff;color:#1d4ed8}
+@media(max-width:760px){
+  .camera-scan-assist{margin-top:7px;padding:8px 9px;gap:8px;border-radius:9px}
+  .camera-scan-assist-icon{flex-basis:30px;width:30px;height:30px;border-radius:8px;font-size:14px}
+  .camera-scan-assist strong{font-size:10px}
+  .camera-scan-assist small{font-size:8.7px}
+  .camera-scan-assist-label{font-size:7px}
+}
