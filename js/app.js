@@ -513,7 +513,7 @@
         <label>Student name<input name="name" required placeholder="Surname, First Name"></label>
         <div class="form-grid two compact-grid"><label>Gender<select name="gender"><option value="Male">Male</option><option value="Female">Female</option></select></label><label>LRN (optional)<input name="lrn" placeholder="Optional"></label></div>
         <button class="btn btn-primary">+ Add student</button>
-      </form><div class="gd-sf1-import"><strong>Import School Form 1 (SF1)</strong><p>Select the official SF1 Excel workbook (.xlsx). You can review names before importing; existing students are skipped.</p><input id="gdSF1Input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><button type="button" class="btn btn-soft" id="gdSF1Import">Import SF1</button><small id="gdSF1Info" role="status"></small></div></div>
+      </form><div class="gd-sf1-import"><strong>Import School Form 1 (SF1)</strong><p>Accepts SF1 and ordinary Excel lists (.xlsx), or CSV. Supports Full Name, split names, Gender and optional LRN. Duplicates are skipped.</p><input id="gdSF1Input" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"><label class="gd-import-gender">If gender is missing from the file <select id="gdImportGender"><option value="">Choose gender or use Excel gender column</option><option value="Male">All unlabelled rows: Male</option><option value="Female">All unlabelled rows: Female</option></select></label><a class="btn btn-soft" href="templates/GradeDock-Student-Import-Template.xlsx" download>Download sample template</a><button type="button" class="btn btn-soft" id="gdSF1Import">Import students</button><small id="gdSF1Info" role="status"></small></div></div>
       <div class="gd-roster-heading">${students.length} students</div>
       <div class="student-list">${students.map((s,i) => `<div><small>${i+1}</small><div><strong>${esc(s.full_name)}</strong><small>${esc(s.gender)}${s.lrn ? ' · LRN '+esc(s.lrn) : ''}</small></div><div class="row-actions"><button class="mini-action" data-edit-student="${s.id}">Edit</button><button class="mini-action danger-action" data-remove-student="${s.id}">Delete</button></div></div>`).join('') || emptyMini('No students yet','Add names above to start your roster.')}</div>`);
     $('#addRosterForm').onsubmit = async ev => {
@@ -526,31 +526,14 @@
       if (!file) return toast('Choose your SF1 Excel file first.', 'warn');
       const button = $('#gdSF1Import'); button.disabled = true;
       try {
-        const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(await file.arrayBuffer());
-        const imported = []; const seen = new Set(students.map(st => st.full_name.trim().toLowerCase()));
-        for (const sheet of workbook.worksheets) {
-          let gender = ''; let nameCol = 0; let lrnCol = 0;
-          sheet.eachRow((row) => {
-            const cells = row.values.map(v => typeof v === 'object' && v !== null ? String(v.text || v.result || '') : String(v ?? '').trim());
-            const joined = cells.join(' ').toUpperCase();
-            if (/^\s*(MALE|BOYS|MALES)\s*$/.test(joined.trim())) {gender='Male';return;}
-            if (/^\s*(FEMALE|GIRLS|FEMALES)\s*$/.test(joined.trim())) {gender='Female';return;}
-            if (/LEARNER.?S? NAME|NAME OF LEARNER|LAST NAME/.test(joined) && /LRN|LEARNER REFERENCE/.test(joined)) {
-              cells.forEach((v,i) => {if (/LEARNER.?S? NAME|NAME OF LEARNER|LAST NAME/.test(v.toUpperCase())) nameCol=i; if (/LRN|LEARNER REFERENCE/.test(v.toUpperCase())) lrnCol=i;});return;
-            }
-            // Official SF1 worksheets commonly use an LRN immediately beside the name.
-            const lrnIndex = cells.findIndex(v => /^\d{12}$/.test(v.replace(/\s/g,'')));
-            const lrn = lrnIndex>=0 ? cells[lrnIndex].replace(/\s/g,'') : (lrnCol && /^\d{12}$/.test(cells[lrnCol]||'') ? cells[lrnCol] : '');
-            const raw = nameCol && cells[nameCol] ? cells[nameCol] : (lrnIndex>=0 ? cells.slice(lrnIndex+1).find(v => /[A-Za-zÀ-ÿ]{2,}/.test(v) && !/^(MALE|FEMALE|BOYS|GIRLS)$/i.test(v)) : '');
-            const name = String(raw||'').trim().replace(/\s+/g,' ');
-            if (!lrn || !name || name.length<5 || /NAME|LEARNER|SCHOOL|TOTAL/i.test(name) || seen.has(name.toLowerCase())) return;
-            if (!gender) gender = /female/i.test(sheet.name) ? 'Female' : /male/i.test(sheet.name) ? 'Male' : '';
-            imported.push({full_name:name, gender:gender||'Male', lrn}); seen.add(name.toLowerCase());
-          });
-        }
-        if (!imported.length) throw new Error('No SF1 student rows were detected. Please use the official SF1 .xlsx workbook with 12-digit LRNs.');
+        const fallback = $('#gdImportGender').value;
+        const parsed = await window.GradeDockRosterImport.read(file, students, fallback);
+        const imported = parsed.students;
+        if (!imported.length) throw new Error('No valid student names found. Try an Excel sheet with Full Name, Gender, LRN columns, or download our template.');
+        const unknown = imported.filter(x=>!x.gender);
+        if (unknown.length) throw new Error(`${unknown.length} students have no detected gender. Select a fallback gender under the upload field, or add a Gender column to your Excel file.`);
         const males=imported.filter(x=>x.gender==='Male').length, females=imported.length-males;
-        if (!confirm(`Import ${imported.length} students?\nMale: ${males} · Female: ${females}\n\nPlease verify gender grouping in SF1 before confirming.`)) return;
+        if (!confirm(`Import ${imported.length} students?\nMale: ${males} · Female: ${females}\nSkipped or duplicates: ${parsed.skipped}\n\nCheck your roster before confirming.`)) return;
         for (let i=0;i<imported.length;i+=40) await Store.addStudents(classId,imported.slice(i,i+40));
         await refresh();manageRoster(classId);toast(`${imported.length} SF1 students imported`);
       } catch(e) { $('#gdSF1Info').textContent=e.message;toast(e.message,'warn'); }
