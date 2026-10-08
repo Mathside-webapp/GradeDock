@@ -508,12 +508,12 @@
   function manageRoster(classId) {
     const cls = state.classes.find(c => c.id === classId);
     const students = state.students.filter(s => s.class_id === classId).sort((a,b) => (a.gender === b.gender ? a.full_name.localeCompare(b.full_name) : (a.gender === 'Male' ? -1 : 1)));
-    modal(`<div class="modal-head"><div><h3>Students · ${esc(classLabel(cls))}</h3><p>Add manually or paste several students, one name per line. Males first, then females.</p></div><button class="icon-btn" data-close-modal>✕</button></div>
+    modal(`<div class="modal-head"><div><h3>Students · ${esc(classLabel(cls))}</h3><p>Add students individually or import an SF1 Excel file. Males first, then females.</p></div><button class="icon-btn" data-close-modal>✕</button></div>
       <div class="gd-roster-top"><form id="addRosterForm" class="form-stack">
         <label>Student name<input name="name" required placeholder="Surname, First Name"></label>
         <div class="form-grid two compact-grid"><label>Gender<select name="gender"><option value="Male">Male</option><option value="Female">Female</option></select></label><label>LRN (optional)<input name="lrn" placeholder="Optional"></label></div>
         <button class="btn btn-primary">+ Add student</button>
-      </form><form id="bulkRosterForm" class="form-stack"><label>Paste multiple student names<textarea name="names" rows="4" placeholder="One student per line" required></textarea></label><label>Gender<select name="gender"><option value="Male">Male</option><option value="Female">Female</option></select></label><button class="btn btn-soft">Add names</button></form></div>
+      </form><div class="gd-sf1-import"><strong>Import School Form 1 (SF1)</strong><p>Select the official SF1 Excel workbook (.xlsx). You can review names before importing; existing students are skipped.</p><input id="gdSF1Input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><button type="button" class="btn btn-soft" id="gdSF1Import">Import SF1</button><small id="gdSF1Info" role="status"></small></div></div>
       <div class="gd-roster-heading">${students.length} students</div>
       <div class="student-list">${students.map((s,i) => `<div><small>${i+1}</small><div><strong>${esc(s.full_name)}</strong><small>${esc(s.gender)}${s.lrn ? ' · LRN '+esc(s.lrn) : ''}</small></div><div class="row-actions"><button class="mini-action" data-edit-student="${s.id}">Edit</button><button class="mini-action danger-action" data-remove-student="${s.id}">Delete</button></div></div>`).join('') || emptyMini('No students yet','Add names above to start your roster.')}</div>`);
     $('#addRosterForm').onsubmit = async ev => {
@@ -521,10 +521,40 @@
       try { await Store.addStudents(classId, [{full_name:String(f.get('name')).trim(), gender:f.get('gender'), lrn:String(f.get('lrn')).trim()}]); await refresh(); manageRoster(classId); toast('Student added'); }
       catch(e) { toast(Store.friendlyError(e),'warn'); }
     };
-    $('#bulkRosterForm').onsubmit = async ev => {
-      ev.preventDefault(); const f = new FormData(ev.target); const names = String(f.get('names')).split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-      try { await Store.addStudents(classId, names.map(full_name => ({full_name, gender:f.get('gender')}))); await refresh(); manageRoster(classId); toast(`${names.length} students added`); }
-      catch(e) { toast(Store.friendlyError(e),'warn'); }
+    $('#gdSF1Import').onclick = async () => {
+      const file = $('#gdSF1Input').files?.[0];
+      if (!file) return toast('Choose your SF1 Excel file first.', 'warn');
+      const button = $('#gdSF1Import'); button.disabled = true;
+      try {
+        const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(await file.arrayBuffer());
+        const imported = []; const seen = new Set(students.map(st => st.full_name.trim().toLowerCase()));
+        for (const sheet of workbook.worksheets) {
+          let gender = ''; let nameCol = 0; let lrnCol = 0;
+          sheet.eachRow((row) => {
+            const cells = row.values.map(v => typeof v === 'object' && v !== null ? String(v.text || v.result || '') : String(v ?? '').trim());
+            const joined = cells.join(' ').toUpperCase();
+            if (/^\s*(MALE|BOYS|MALES)\s*$/.test(joined.trim())) {gender='Male';return;}
+            if (/^\s*(FEMALE|GIRLS|FEMALES)\s*$/.test(joined.trim())) {gender='Female';return;}
+            if (/LEARNER.?S? NAME|NAME OF LEARNER|LAST NAME/.test(joined) && /LRN|LEARNER REFERENCE/.test(joined)) {
+              cells.forEach((v,i) => {if (/LEARNER.?S? NAME|NAME OF LEARNER|LAST NAME/.test(v.toUpperCase())) nameCol=i; if (/LRN|LEARNER REFERENCE/.test(v.toUpperCase())) lrnCol=i;});return;
+            }
+            // Official SF1 worksheets commonly use an LRN immediately beside the name.
+            const lrnIndex = cells.findIndex(v => /^\d{12}$/.test(v.replace(/\s/g,'')));
+            const lrn = lrnIndex>=0 ? cells[lrnIndex].replace(/\s/g,'') : (lrnCol && /^\d{12}$/.test(cells[lrnCol]||'') ? cells[lrnCol] : '');
+            const raw = nameCol && cells[nameCol] ? cells[nameCol] : (lrnIndex>=0 ? cells.slice(lrnIndex+1).find(v => /[A-Za-zÀ-ÿ]{2,}/.test(v) && !/^(MALE|FEMALE|BOYS|GIRLS)$/i.test(v)) : '');
+            const name = String(raw||'').trim().replace(/\s+/g,' ');
+            if (!lrn || !name || name.length<5 || /NAME|LEARNER|SCHOOL|TOTAL/i.test(name) || seen.has(name.toLowerCase())) return;
+            if (!gender) gender = /female/i.test(sheet.name) ? 'Female' : /male/i.test(sheet.name) ? 'Male' : '';
+            imported.push({full_name:name, gender:gender||'Male', lrn}); seen.add(name.toLowerCase());
+          });
+        }
+        if (!imported.length) throw new Error('No SF1 student rows were detected. Please use the official SF1 .xlsx workbook with 12-digit LRNs.');
+        const males=imported.filter(x=>x.gender==='Male').length, females=imported.length-males;
+        if (!confirm(`Import ${imported.length} students?\nMale: ${males} · Female: ${females}\n\nPlease verify gender grouping in SF1 before confirming.`)) return;
+        for (let i=0;i<imported.length;i+=40) await Store.addStudents(classId,imported.slice(i,i+40));
+        await refresh();manageRoster(classId);toast(`${imported.length} SF1 students imported`);
+      } catch(e) { $('#gdSF1Info').textContent=e.message;toast(e.message,'warn'); }
+      finally { button.disabled=false; }
     };
     $$('[data-edit-student]').forEach(b => b.onclick = () => {
       const s = students.find(x => x.id === b.dataset.editStudent);
@@ -877,9 +907,7 @@
     const r = state.scan;
     $('#scanEmpty').classList.add('hidden');
     $('#scanResult').classList.remove('hidden');
-    const suggestions = $('#scanRosterSuggestions');
-    if (suggestions) suggestions.innerHTML = state.students.filter(s => s.class_id === r.classId).map(s => `<option value="${esc(s.full_name)}"></option>`).join('');
-    $('#scanConfidence').textContent = `${r.confidence}% clear responses`;
+        $('#scanConfidence').textContent = `${r.confidence}% clear responses`;
     $('#scanConfidence').className = `badge ${r.uncertain ? 'warn' : 'good'}`;
     const mirrorNote = r.cameraMirrorCorrected ? ' Camera orientation was corrected automatically.' : '';
     $('#scanStatusText').textContent = r.uncertain
@@ -909,7 +937,17 @@
         </div>`;
       }).join('')}
       </div>
-      <div class="save-scan"><div class="scanned-name-wrap"><input id="scannedStudentName" list="scanRosterSuggestions" required placeholder="Student name"><datalist id="scanRosterSuggestions"></datalist><small id="nameOcrStatus">Reading the handwritten name…</small></div><div class="scan-save-actions"><button id="retryScanBtn" type="button" class="btn btn-soft">↻ Retry scan</button><button id="saveScanBtn" class="btn btn-primary" ${r.uncertain ? 'disabled' : ''}>Save to ${esc(r.className)}</button></div></div>`;
+      <div class="save-scan"><div class="scanned-name-wrap"><label class="gd-name-label" for="scannedStudentName">Student name — search or select</label><input id="scannedStudentName" type="search" autocomplete="off" placeholder="Search student name…"><select id="gdScanRosterSelect" aria-label="Select student from roster"><option value="">Choose from class roster…</option></select><small id="nameOcrStatus">Reading the handwritten name…</small></div><div class="scan-save-actions"><button id="retryScanBtn" type="button" class="btn btn-soft">↻ Retry scan</button><button id="saveScanBtn" class="btn btn-primary" ${r.uncertain ? 'disabled' : ''}>Save to ${esc(r.className)}</button></div></div>`;
+
+    const roster = state.students.filter(s => s.class_id === r.classId).sort((a,b)=>a.full_name.localeCompare(b.full_name));
+    const nameInput = $('#scannedStudentName'), nameSelect = $('#gdScanRosterSelect');
+    const renderNames = (q='') => {
+      const matches = roster.filter(s => s.full_name.toLowerCase().includes(q.toLowerCase()));
+      nameSelect.innerHTML = '<option value="">Choose from class roster…</option>' + matches.map(st => `<option value="${esc(st.full_name)}">${esc(st.full_name)}</option>`).join('');
+    };
+    renderNames();
+    nameInput.addEventListener('input', () => renderNames(nameInput.value));
+    nameSelect.addEventListener('change', () => {if(nameSelect.value) {nameInput.value=nameSelect.value;renderNames();nameSelect.value=nameInput.value;}});
 
     const updateChip = a => {
       const chip = $(`[data-answer-chip="${a.question}"]`);
