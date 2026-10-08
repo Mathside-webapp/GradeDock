@@ -17,6 +17,9 @@ window.GradeDockRosterImport = (() => {
       if (!nonEmpty.length) continue;
       const heading=nonEmpty.join(' ').trim();
       const section = asGender(heading.replace(/[:\-]/g,''));
+      if (/\bTOTAL\s+MALES?\b/i.test(heading)) { gender='Female'; continue; }
+      if (/\bTOTAL\s+FEMALES?\b|\bCOMBINED\b/i.test(heading)) { gender=''; continue; }
+      if (/^(MALE|FEMALE)\s+LEARNERS?$/i.test(heading)) { gender=/^MALE/i.test(heading)?'Male':'Female'; continue; }
       if(section){gender=section;continue;}
       const labels=values.map(key);
       const find = re => labels.findIndex(x=>re.test(x));
@@ -64,11 +67,13 @@ window.GradeDockRosterImport = (() => {
     const seen=new Set(existing.map(s=>key(s.full_name||s)));
     let sets=[];
     if(/\.csv$/i.test(file.name)) sets=[{name:'Roster',rows:csvRows(await file.text())}];
-    else if(/\.xlsx$/i.test(file.name)){
-      if(!window.ExcelJS) throw new Error('Excel reader did not load. Please check your internet connection.');
-      const wb=new ExcelJS.Workbook();await wb.xlsx.load(await file.arrayBuffer());
-      sets=wb.worksheets.map(w=>{const rows=[];w.eachRow({includeEmpty:false},row=>{const values=[];for(let c=1;c<=Math.min(row.cellCount,40);c++)values.push(str(row.getCell(c).value));rows.push(values);});return {name:w.name,rows};});
-    } else throw new Error('Unsupported format. Please choose an .xlsx or .csv file. For old .xls files, use Excel Save As → .xlsx.');
+    else if(/\.(xlsx|xls)$/i.test(file.name)){
+      if(!window.XLSX) throw new Error('The Excel reader has not loaded. Refresh the website and check your internet connection.');
+      let workbook;
+      try { workbook=XLSX.read(await file.arrayBuffer(), {type:'array',raw:false,cellDates:false}); }
+      catch(e) { throw new Error('Excel could not open this file. Try opening it in Excel and using Save As → Excel Workbook (.xlsx). '+(e.message||'')); }
+      sets=(workbook.SheetNames||[]).map(name=>({name,rows:XLSX.utils.sheet_to_json(workbook.Sheets[name],{header:1,raw:false,defval:'',blankrows:false})}));
+    } else throw new Error('Unsupported format. Please choose an .xls, .xlsx, or .csv file.');
     let result=[];let skipped=0;
     for(const sheet of sets){const out=parseGrid(sheet.rows,sheet.name,seen,fallbackGender);result.push(...out.imported);skipped+=out.skipped;}
     return {students:result,skipped};

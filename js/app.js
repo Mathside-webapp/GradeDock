@@ -513,7 +513,7 @@
         <label>Student name<input name="name" required placeholder="Surname, First Name"></label>
         <div class="form-grid two compact-grid"><label>Gender<select name="gender"><option value="Male">Male</option><option value="Female">Female</option></select></label><label>LRN (optional)<input name="lrn" placeholder="Optional"></label></div>
         <button class="btn btn-primary">+ Add student</button>
-      </form><div class="gd-sf1-import"><strong>Import School Form 1 (SF1)</strong><p>Accepts SF1 and ordinary Excel lists (.xlsx), or CSV. Supports Full Name, split names, Gender and optional LRN. Duplicates are skipped.</p><input id="gdSF1Input" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"><label class="gd-import-gender">If gender is missing from the file <select id="gdImportGender"><option value="">Choose gender or use Excel gender column</option><option value="Male">All unlabelled rows: Male</option><option value="Female">All unlabelled rows: Female</option></select></label><a class="btn btn-soft" href="templates/GradeDock-Student-Import-Template.xlsx" download>Download sample template</a><button type="button" class="btn btn-soft" id="gdSF1Import">Import students</button><small id="gdSF1Info" role="status"></small></div></div>
+      </form><div class="gd-sf1-import"><strong>Import School Form 1 (SF1)</strong><p>Accepts DepEd SF1 (.xls and .xlsx), ordinary Excel lists, or CSV. Supports Full Name, split names, Gender and optional LRN. Duplicates are skipped.</p><input id="gdSF1Input" type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"><label class="gd-import-gender">If gender is missing from the file <select id="gdImportGender"><option value="">Choose gender or use Excel gender column</option><option value="Male">All unlabelled rows: Male</option><option value="Female">All unlabelled rows: Female</option></select></label><a class="btn btn-soft" href="templates/GradeDock-Student-Import-Template.xlsx" download>Download sample template</a><button type="button" class="btn btn-soft" id="gdSF1Import">Import students</button><small id="gdSF1Info" role="status"></small></div></div>
       <div class="gd-roster-heading">${students.length} students</div>
       <div class="student-list">${students.map((s,i) => `<div><small>${i+1}</small><div><strong>${esc(s.full_name)}</strong><small>${esc(s.gender)}${s.lrn ? ' · LRN '+esc(s.lrn) : ''}</small></div><div class="row-actions"><button class="mini-action" data-edit-student="${s.id}">Edit</button><button class="mini-action danger-action" data-remove-student="${s.id}">Delete</button></div></div>`).join('') || emptyMini('No students yet','Add names above to start your roster.')}</div>`);
     $('#addRosterForm').onsubmit = async ev => {
@@ -523,7 +523,7 @@
     };
     $('#gdSF1Import').onclick = async () => {
       const file = $('#gdSF1Input').files?.[0];
-      if (!file) return toast('Choose your SF1 Excel file first.', 'warn');
+      if (!file) return toast('Choose an Excel or CSV file first.', 'warn');
       const button = $('#gdSF1Import'); button.disabled = true;
       try {
         const fallback = $('#gdImportGender').value;
@@ -536,7 +536,7 @@
         if (!confirm(`Import ${imported.length} students?\nMale: ${males} · Female: ${females}\nSkipped or duplicates: ${parsed.skipped}\n\nCheck your roster before confirming.`)) return;
         for (let i=0;i<imported.length;i+=40) await Store.addStudents(classId,imported.slice(i,i+40));
         await refresh();manageRoster(classId);toast(`${imported.length} SF1 students imported`);
-      } catch(e) { $('#gdSF1Info').textContent=e.message;toast(e.message,'warn'); }
+      } catch(e) { $('#gdSF1Info').textContent='Import failed: '+(e.message||String(e));console.error('GradeDock student import:',e);toast(e.message||'Excel import failed','warn'); }
       finally { button.disabled=false; }
     };
     $$('[data-edit-student]').forEach(b => b.onclick = () => {
