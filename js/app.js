@@ -507,13 +507,13 @@
 
   function manageRoster(classId) {
     const cls = state.classes.find(c => c.id === classId);
-    const students = state.students.filter(s => s.class_id === classId).sort((a,b) => (a.gender === b.gender ? a.full_name.localeCompare(b.full_name) : (a.gender === 'Male' ? -1 : 1)));
-    modal(`<div class="modal-head"><div><h3>Students · ${esc(classLabel(cls))}</h3><p>Add students individually or import an SF1 Excel file. Males first, then females.</p></div><button class="icon-btn" data-close-modal>✕</button></div>
+    const students = state.students.filter(s => s.class_id === classId).sort((a,b) => (({Male:0,Female:1,Unspecified:2})[a.gender] ?? 2) - (({Male:0,Female:1,Unspecified:2})[b.gender] ?? 2) || a.full_name.localeCompare(b.full_name));
+    modal(`<div class="modal-head"><div><h3>Students · ${esc(classLabel(cls))}</h3><p>Add students individually or import an SF1 Excel file. Gender is detected from SF1 sections; names without gender information are imported as Unspecified.</p></div><button class="icon-btn" data-close-modal>✕</button></div>
       <div class="gd-roster-top"><form id="addRosterForm" class="form-stack">
         <label>Student name<input name="name" required placeholder="Surname, First Name"></label>
-        <div class="form-grid two compact-grid"><label>Gender<select name="gender"><option value="Male">Male</option><option value="Female">Female</option></select></label><label>LRN (optional)<input name="lrn" placeholder="Optional"></label></div>
+        <div class="form-grid two compact-grid"><label>Gender<select name="gender"><option value="Male">Male</option><option value="Female">Female</option><option value="Unspecified">Unspecified</option></select></label><label>LRN (optional)<input name="lrn" placeholder="Optional"></label></div>
         <button class="btn btn-primary">+ Add student</button>
-      </form><div class="gd-sf1-import"><strong>Import School Form 1 (SF1)</strong><p>Accepts DepEd SF1 (.xls and .xlsx), ordinary Excel lists, or CSV. Supports Full Name, split names, Gender and optional LRN. Duplicates are skipped.</p><input id="gdSF1Input" type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"><label class="gd-import-gender">If gender is missing from the file <select id="gdImportGender"><option value="">Choose gender or use Excel gender column</option><option value="Male">All unlabelled rows: Male</option><option value="Female">All unlabelled rows: Female</option></select></label><a class="btn btn-soft" href="templates/GradeDock-Student-Import-Template.xlsx" download>Download sample template</a><button type="button" class="btn btn-soft" id="gdSF1Import">Import students</button><small id="gdSF1Info" role="status"></small></div></div>
+      </form><div class="gd-sf1-import"><strong>Import School Form 1 (SF1)</strong><p>Accepts DepEd SF1 (.xls and .xlsx), ordinary Excel lists, or CSV. Supports Full Name, split names, Gender and optional LRN. Duplicates are skipped.</p><input id="gdSF1Input" type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"><a class="btn btn-soft" href="templates/GradeDock-Student-Import-Template.xlsx" download>Download sample template</a><button type="button" class="btn btn-soft" id="gdSF1Import">Import students</button><small id="gdSF1Info" role="status"></small></div></div>
       <div class="gd-roster-heading">${students.length} students</div>
       <div class="student-list">${students.map((s,i) => `<div><small>${i+1}</small><div><strong>${esc(s.full_name)}</strong><small>${esc(s.gender)}${s.lrn ? ' · LRN '+esc(s.lrn) : ''}</small></div><div class="row-actions"><button class="mini-action" data-edit-student="${s.id}">Edit</button><button class="mini-action danger-action" data-remove-student="${s.id}">Delete</button></div></div>`).join('') || emptyMini('No students yet','Add names above to start your roster.')}</div>`);
     $('#addRosterForm').onsubmit = async ev => {
@@ -526,14 +526,11 @@
       if (!file) return toast('Choose an Excel or CSV file first.', 'warn');
       const button = $('#gdSF1Import'); button.disabled = true;
       try {
-        const fallback = $('#gdImportGender').value;
-        const parsed = await window.GradeDockRosterImport.read(file, students, fallback);
+        const parsed = await window.GradeDockRosterImport.read(file, students);
         const imported = parsed.students;
         if (!imported.length) throw new Error('No valid student names found. Try an Excel sheet with Full Name, Gender, LRN columns, or download our template.');
-        const unknown = imported.filter(x=>!x.gender);
-        if (unknown.length) throw new Error(`${unknown.length} students have no detected gender. Select a fallback gender under the upload field, or add a Gender column to your Excel file.`);
-        const males=imported.filter(x=>x.gender==='Male').length, females=imported.length-males;
-        if (!confirm(`Import ${imported.length} students?\nMale: ${males} · Female: ${females}\nSkipped or duplicates: ${parsed.skipped}\n\nCheck your roster before confirming.`)) return;
+        const males=imported.filter(x=>x.gender==='Male').length, females=imported.filter(x=>x.gender==='Female').length, unspecified=imported.filter(x=>x.gender==='Unspecified').length;
+        if (!confirm(`Import ${imported.length} students?\nMale: ${males} · Female: ${females} · Unspecified: ${unspecified}\nSkipped or duplicates: ${parsed.skipped}\n\nCheck your roster before confirming.`)) return;
         for (let i=0;i<imported.length;i+=40) await Store.addStudents(classId,imported.slice(i,i+40));
         await refresh();manageRoster(classId);toast(`${imported.length} SF1 students imported`);
       } catch(e) { $('#gdSF1Info').textContent='Import failed: '+(e.message||String(e));console.error('GradeDock student import:',e);toast(e.message||'Excel import failed','warn'); }
@@ -541,7 +538,7 @@
     };
     $$('[data-edit-student]').forEach(b => b.onclick = () => {
       const s = students.find(x => x.id === b.dataset.editStudent);
-      modal(`<div class="modal-head"><h3>Edit student</h3><button class="icon-btn" data-close-modal>✕</button></div><form id="editStudentForm" class="form-stack"><label>Name<input name="full_name" required value="${esc(s.full_name)}"></label><label>Gender<select name="gender"><option value="Male" ${s.gender==='Male'?'selected':''}>Male</option><option value="Female" ${s.gender==='Female'?'selected':''}>Female</option></select></label><label>LRN (optional)<input name="lrn" value="${esc(s.lrn || '')}"></label><div class="modal-actions"><button type="button" class="btn btn-soft" data-close-modal>Cancel</button><button class="btn btn-primary">Save</button></div></form>`);
+      modal(`<div class="modal-head"><h3>Edit student</h3><button class="icon-btn" data-close-modal>✕</button></div><form id="editStudentForm" class="form-stack"><label>Name<input name="full_name" required value="${esc(s.full_name)}"></label><label>Gender<select name="gender"><option value="Male" ${s.gender==='Male'?'selected':''}>Male</option><option value="Female" ${s.gender==='Female'?'selected':''}>Female</option><option value="Unspecified" ${s.gender==='Unspecified'?'selected':''}>Unspecified</option></select></label><label>LRN (optional)<input name="lrn" value="${esc(s.lrn || '')}"></label><div class="modal-actions"><button type="button" class="btn btn-soft" data-close-modal>Cancel</button><button class="btn btn-primary">Save</button></div></form>`);
       $('#editStudentForm').onsubmit = async ev => {ev.preventDefault();const f=new FormData(ev.target);try {await Store.editStudent(s.id,{full_name:String(f.get('full_name')).trim(),gender:f.get('gender'),lrn:String(f.get('lrn')).trim()||null});await refresh();manageRoster(classId);toast('Student updated');}catch(e){toast(Store.friendlyError(e),'warn');}};
     });
     $$('[data-remove-student]').forEach(b => b.onclick = () => {

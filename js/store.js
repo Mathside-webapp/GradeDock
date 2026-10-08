@@ -160,7 +160,7 @@
     },
 
     async addStudents(classId, students) {
-      const rows = students.map(student => ({ class_id: classId, full_name: student.full_name.trim(), gender: student.gender, lrn: student.lrn || null }));
+      const rows = students.map(student => ({ class_id: classId, full_name: student.full_name.trim(), gender: student.gender || 'Unspecified', lrn: student.lrn || null }));
       if (!rows.length) return [];
       if (demo) {
         const d = load();

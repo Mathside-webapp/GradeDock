@@ -9,7 +9,7 @@ window.GradeDockRosterImport = (() => {
   const key = s => clean(s).toLowerCase().replace(/[^a-z0-9]/g,'');
   const asGender = s => /^(male|males|boy|boys|m)$/i.test(clean(s))?'Male':/^(female|females|girl|girls|f)$/i.test(clean(s))?'Female':'';
   const isHeader = s => /learner|student|last.?name|surname|first.?name|given.?name|middle.?name|\blrn\b|sex|gender|school form|grade|section|remarks|total|no\.|number/i.test(s);
-  function parseGrid(rows, sheetName, existing, fallbackGender) {
+  function parseGrid(rows, sheetName, existing) {
     const seen = existing; const imported=[]; let gender=asGender(sheetName)||'';
     let cols=null;let skipped=0;
     for (const r of rows) {
@@ -17,6 +17,9 @@ window.GradeDockRosterImport = (() => {
       if (!nonEmpty.length) continue;
       const heading=nonEmpty.join(' ').trim();
       const section = asGender(heading.replace(/[:\-]/g,''));
+      // Common SF1 layouts use a single "MALE"/"FEMALE" cell or a short section heading.
+      const sf1Heading = /^(?:[IVX]+[.\s-]*)?(MALE|FEMALE|BOYS|GIRLS)(?:[\s:–-]*(?:LEARNERS?|STUDENTS?|PUPILS?))?\s*$/i.exec(heading);
+      if (sf1Heading) { gender=asGender(sf1Heading[1]); cols=null; continue; }
       if (/\bTOTAL\s+MALES?\b/i.test(heading)) { gender='Female'; continue; }
       if (/\bTOTAL\s+FEMALES?\b|\bCOMBINED\b/i.test(heading)) { gender=''; continue; }
       if (/^(MALE|FEMALE)\s+LEARNERS?$/i.test(heading)) { gender=/^MALE/i.test(heading)?'Male':'Female'; continue; }
@@ -42,11 +45,11 @@ window.GradeDockRosterImport = (() => {
       full=clean(full).replace(/^\d+[.)\-]?\s+/,'');
       if(!full||full.length<4||isHeader(full)||!/[a-zÀ-ÿ]{2,}/i.test(full)){skipped++;continue;}
       const rowGender=cols?.sex>=0?asGender(values[cols.sex]):values.map(asGender).find(Boolean);
-      const resolved=rowGender || gender || fallbackGender;
+      const resolved=rowGender || gender || 'Unspecified';
       const identity=key(full);
       if(seen.has(identity)){skipped++;continue;}
       seen.add(identity);
-      imported.push({full_name:full,gender:resolved||'',lrn:lrnValue});
+      imported.push({full_name:full,gender:resolved,lrn:lrnValue});
     }
     return {imported,skipped};
   }
@@ -63,7 +66,7 @@ window.GradeDockRosterImport = (() => {
     if(val||row.length){row.push(val);rows.push(row);}
     return rows;
   }
-  async function read(file,existing=[],fallbackGender=''){
+  async function read(file,existing=[]){
     const seen=new Set(existing.map(s=>key(s.full_name||s)));
     let sets=[];
     if(/\.csv$/i.test(file.name)) sets=[{name:'Roster',rows:csvRows(await file.text())}];
@@ -75,7 +78,7 @@ window.GradeDockRosterImport = (() => {
       sets=(workbook.SheetNames||[]).map(name=>({name,rows:XLSX.utils.sheet_to_json(workbook.Sheets[name],{header:1,raw:false,defval:'',blankrows:false})}));
     } else throw new Error('Unsupported format. Please choose an .xls, .xlsx, or .csv file.');
     let result=[];let skipped=0;
-    for(const sheet of sets){const out=parseGrid(sheet.rows,sheet.name,seen,fallbackGender);result.push(...out.imported);skipped+=out.skipped;}
+    for(const sheet of sets){const out=parseGrid(sheet.rows,sheet.name,seen);result.push(...out.imported);skipped+=out.skipped;}
     return {students:result,skipped};
   }
   return {read};
