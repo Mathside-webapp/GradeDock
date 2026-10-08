@@ -1,14 +1,6 @@
-/*
-  GradeDock Supabase configuration
-  --------------------------------
-  1) Create a Supabase project.
-  2) Run sql/gradedock.sql in the SQL Editor.
-  3) Paste your Project URL and PUBLISHABLE key below.
-
-  IMPORTANT: Never put a secret/service_role key in browser code.
-*/
+/* GradeDock Supabase settings. The publishable key is safe for browser use. */
 window.GRADEDOCK_CONFIG = {
-  supabaseUrl: 'https://zbvcwttihstgiztlmjqz.supabase.co',
-  supabasePublishableKey: 'sb_publishable_RnLygCAn9KocXglFHOmXbg_K2RoeoZG',
+  supabaseUrl: 'https://kgdxnmbmyyimikjftvnn.supabase.co',
+  supabasePublishableKey: 'sb_publishable_FFYZyKrBUx1TUyZbKu1Fkg_UgrLChEn',
   storageBucket: 'gradedock-scans'
 };
