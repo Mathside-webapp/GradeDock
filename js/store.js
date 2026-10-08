@@ -29,6 +29,7 @@
       'exam-1': Array.from({ length: 40 }, (_, i) => ['A', 'B', 'C', 'D'][i % 4])
     },
     results: [],
+    students: [],
     resultAnswers: {}
   });
 
@@ -38,6 +39,9 @@
     try {
       const data = JSON.parse(localStorage.getItem(LS)) || defaultDemo();
       if (!data.resultAnswers || typeof data.resultAnswers !== 'object') data.resultAnswers = {};
+      if (!Array.isArray(data.students)) data.students = [];
+      data.classes.forEach(c => { if (c.is_archived == null) c.is_archived = false; });
+      data.exams.forEach(e => { if (e.is_archived == null) e.is_archived = false; });
       return data;
     } catch { return defaultDemo(); }
   }
@@ -142,6 +146,58 @@
       }
       const s = await this.session();
       const { data, error } = await client.from('classes').insert({ ...normalized, teacher_id: s.user.id }).select().single();
+      if (error) throw error;
+      return data;
+    },
+
+    async students(classId = null) {
+      if (demo) return load().students.filter(x => !classId || x.class_id === classId);
+      let query = client.from('students').select('*').order('gender').order('full_name');
+      if (classId) query = query.eq('class_id', classId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+
+    async addStudents(classId, students) {
+      const rows = students.map(student => ({ class_id: classId, full_name: student.full_name.trim(), gender: student.gender, lrn: student.lrn || null }));
+      if (!rows.length) return [];
+      if (demo) {
+        const d = load();
+        const newRows = rows.map(x => ({ ...x, id: id('student'), teacher_id: 'demo-user', created_at: now() }));
+        d.students.push(...newRows); save(d); return newRows;
+      }
+      const s = await this.session();
+      const { data, error } = await client.from('students').insert(rows.map(x => ({ ...x, teacher_id: s.user.id }))).select();
+      if (error) throw error;
+      return data;
+    },
+
+    async editStudent(studentId, changes) {
+      if (demo) {
+        const d = load(); const student = d.students.find(x => x.id === studentId);
+        if (!student) throw new Error('Student not found');
+        Object.assign(student, changes); save(d); return student;
+      }
+      const { data, error } = await client.from('students').update(changes).eq('id', studentId).select().single();
+      if (error) throw error;
+      return data;
+    },
+
+    async deleteStudent(studentId) {
+      if (demo) { const d = load(); d.students = d.students.filter(x => x.id !== studentId); save(d); return; }
+      const { error } = await client.from('students').delete().eq('id', studentId);
+      if (error) throw error;
+    },
+
+    async setArchived(kind, itemId, archived) {
+      if (!['classes', 'exams'].includes(kind)) throw new Error('Invalid archive type.');
+      if (demo) {
+        const d = load(); const row = d[kind].find(x => x.id === itemId);
+        if (!row) throw new Error('Item not found.');
+        row.is_archived = archived; save(d); return row;
+      }
+      const { data, error } = await client.from(kind).update({ is_archived: archived }).eq('id', itemId).select().single();
       if (error) throw error;
       return data;
     },

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#2563eb" />
   <title>GradeDock — Scan. Grade. Understand.</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="css/styles.css?v=3.16.1" />
+  <link rel="stylesheet" href="css/styles.css?v=3.19" />
 </head>
 <body>
   <div id="toastHost" class="toast-host"></div>
@@ -59,6 +59,7 @@
         <button class="nav-item scan-nav" data-page="scan"><span>⌗</span>Scan papers</button>
         <button class="nav-item" data-page="results"><span>✓</span>Results</button>
         <button class="nav-item" data-page="analytics"><span>↗</span>Analytics</button>
+        <button class="nav-item" data-page="archives"><span>▣</span>Archives</button>
       </nav>
       <div class="sidebar-bottom">
         <button class="nav-item" data-page="settings"><span>⚙</span>Settings</button>
@@ -142,6 +143,7 @@
         <div class="two-col"><section class="panel"><div class="panel-head"><div><h3>Exam performance</h3><p>Average percentage by assessment.</p></div></div><div id="examBars" class="bar-chart"></div></section><section class="panel"><div class="panel-head"><div><h3>Score distribution</h3><p>How results are distributed.</p></div></div><div id="distribution"></div></section></div>
       </section>
 
+      <section id="page-archives" class="page"><div class="gd-archive-panels"><section class="panel"><div class="panel-head"><div><h3>Archived classes</h3><p>Students and results stay safely saved.</p></div></div><div id="archivedClasses"></div></section><section class="panel"><div class="panel-head"><div><h3>Archived exams</h3><p>Restore assessments without losing answer keys or grades.</p></div></div><div id="archivedExams"></div></section></div></section>
       <section id="page-settings" class="page">
         <div class="settings-grid">
           <section class="panel"><div class="panel-head"><div><h3>Profile</h3><p>Your teacher workspace identity.</p></div></div><form id="profileForm" class="form-stack"><label>Full name<input id="profileName" /></label><label>School<input id="profileSchool" placeholder="School name" /></label><button class="btn btn-primary" type="submit">Save profile</button></form></section>
@@ -161,7 +163,7 @@
   <script src="js/sheet.js"></script>
   <script src="js/excel.js"></script>
   <script src="js/scanner.js?v=3.18"></script>
-  <script src="js/store.js?v=3.16.1"></script>
-  <script src="js/app.js?v=3.18"></script>
+  <script src="js/store.js?v=3.20"></script>
+  <script src="js/app.js?v=3.20"></script>
 </body>
 </html>

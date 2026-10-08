@@ -7,6 +7,7 @@
     user: null,
     classes: [],
     exams: [],
+    students: [],
     results: [],
     scan: null,
     scanImageBlob: null,
@@ -24,6 +25,7 @@
     scan: 'Choose a section, then capture or upload an answer sheet',
     results: 'Review scores organized by section/class',
     analytics: 'See performance patterns across assessments',
+    archives: 'Archived classes and exams can be restored anytime',
     settings: 'Profile, connection, and scanning preferences'
   };
 
@@ -102,6 +104,7 @@
     state.user = await Store.user();
     state.classes = await Store.classes();
     state.exams = await Store.exams();
+    state.students = await Store.students();
     state.results = await Store.results();
     renderAll();
   }
@@ -117,6 +120,7 @@
     renderDashboard();
     renderClasses();
     renderExams();
+    renderArchives();
     renderResults();
     renderAnalytics();
     renderSettings();
@@ -133,15 +137,15 @@
       : 0;
 
     $('#statGrid').innerHTML = [
-      ['Classes', state.classes.length, '▦'],
-      ['Exams', state.exams.length, '▤'],
+      ['Classes', state.classes.filter(c => !c.is_archived).length, '▦'],
+      ['Exams', state.exams.filter(e => !e.is_archived).length, '▤'],
       ['Scanned papers', state.results.length, '⌗'],
       ['Average score', `${avg}%`, '↗']
     ].map(([label, value, icon]) => `
       <div class="stat-card"><span class="stat-icon">${icon}</span><div><small>${label}</small><strong>${value}</strong></div></div>
     `).join('');
 
-    $('#recentExams').innerHTML = state.exams.slice(0, 4).map(e => examRow(e, true)).join('') ||
+    $('#recentExams').innerHTML = state.exams.filter(e => !e.is_archived).slice(0, 4).map(e => examRow(e, true)).join('') ||
       emptyMini('No exams yet', 'Create your first assessment.');
 
     $('#recentResults').innerHTML = state.results.slice(0, 5).map(r => `
@@ -151,22 +155,24 @@
 
   function renderClasses() {
     const q = ($('#classSearch')?.value || '').toLowerCase();
-    const list = state.classes.filter(c => `${classLabel(c)} ${c.grade_level || ''} ${c.school_year || ''}`.toLowerCase().includes(q));
+    const list = state.classes.filter(c => !c.is_archived).filter(c => `${classLabel(c)} ${c.grade_level || ''} ${c.school_year || ''}`.toLowerCase().includes(q));
 
     $('#classesGrid').innerHTML = list.map(c => {
       const scans = state.results.filter(r => r.class_id === c.id).length;
+      const students = state.students.filter(s => s.class_id === c.id).length;
       return `
         <article class="class-card" data-class="${c.id}">
           <div class="class-color"></div>
           <span class="kicker">GRADE ${esc(c.grade_level || '—')}</span>
           <h3>${esc(classLabel(c))}</h3>
           <p>${esc(c.school_year || 'School year not set')}</p>
-          <div class="class-meta"><span>Section</span><span>${scans} result${scans === 1 ? '' : 's'}</span></div>
-          <button class="btn btn-soft btn-block" data-open-class="${c.id}">Open class</button>
+          <div class="class-meta"><span>${students} student${students === 1 ? '' : 's'}</span><span>${scans} result${scans === 1 ? '' : 's'}</span></div>
+          <div class="gd-flex-buttons"><button class="btn btn-soft" data-open-class="${c.id}">Open class</button><button class="btn btn-soft" data-archive-class="${c.id}">Archive</button></div>
         </article>`;
     }).join('') || `<div class="empty-state"><span>▦</span><h4>No classes found</h4><p>Create a grade level and section to organize scan results.</p></div>`;
 
     $$('[data-open-class]').forEach(b => b.onclick = () => openClass(b.dataset.openClass));
+    $$('[data-archive-class]').forEach(b => b.onclick = () => archiveItem('classes', b.dataset.archiveClass));
   }
 
   function examRow(exam, compact = false) {
@@ -185,7 +191,7 @@
           <button class="mini-action" data-sheet-png="${exam.id}" title="Download scanner-ready answer sheet as PNG image">${pngLabel}</button>
           <button class="mini-action" data-manage-key="${exam.id}" title="Enter, import, or replace the answer key">${keyLabel}</button>
           <button class="mini-action" data-scan-exam="${exam.id}" title="Scan this exam">${scanLabel}</button>
-          ${compact ? '' : `<button class="mini-action danger-action" data-delete-exam="${exam.id}" title="Delete this exam">Delete</button>`}
+          ${compact ? '' : `<button class="mini-action" data-archive-exam="${exam.id}">Archive</button><button class="mini-action danger-action" data-delete-exam="${exam.id}" title="Delete this exam">Delete</button>`}
         </div>
       </div>`;
   }
@@ -195,6 +201,7 @@
     $$('[data-sheet-png]').forEach(b => b.onclick = () => downloadSheetPng(b.dataset.sheetPng));
     $$('[data-manage-key]').forEach(b => b.onclick = () => manageExamKey(b.dataset.manageKey));
     $$('[data-delete-exam]').forEach(b => b.onclick = () => confirmDeleteExam(b.dataset.deleteExam));
+    $$('[data-archive-exam]').forEach(b => b.onclick = () => archiveItem('exams', b.dataset.archiveExam));
     $$('[data-scan-exam]').forEach(b => b.onclick = () => {
       go('scan');
       $('#scanExam').value = b.dataset.scanExam;
@@ -205,6 +212,7 @@
   function renderExams() {
     const q = ($('#examSearch')?.value || '').toLowerCase();
     $('#examList').innerHTML = state.exams
+      .filter(e => !e.is_archived)
       .filter(e => e.title.toLowerCase().includes(q))
       .map(e => examRow(e))
       .join('') || `<div class="empty-state"><span>▤</span><h4>No exams found</h4><p>Create an exam first to download its scanner-ready answer sheet. The correct answers can be added later.</p></div>`;
@@ -460,12 +468,74 @@
   function openClass(id) {
     const c = state.classes.find(x => x.id === id);
     const rows = state.results.filter(r => r.class_id === id).slice(0, 8);
+    const students = state.students.filter(s => s.class_id === id);
     modal(`
       <div class="modal-head"><div><span class="kicker">GRADE ${esc(c?.grade_level || '—')}</span><h3>${esc(classLabel(c))}</h3><p>${esc(c?.school_year || 'School year not set')}</p></div><button class="icon-btn" data-close-modal>✕</button></div>
       <div class="class-summary-strip"><div><small>Saved results</small><strong>${state.results.filter(r => r.class_id === id).length}</strong></div><div><small>Section</small><strong>${esc(classLabel(c))}</strong></div></div>
+      <div class="gd-roster-actions"><strong>Student roster (${students.length})</strong><button type="button" class="btn btn-primary" id="manageRosterBtn">Manage students</button></div>
+      <div class="gd-roster-preview">${students.length ? students.slice(0, 6).map(s => `<span>${esc(s.full_name)}</span>`).join('') : '<small>No students added yet</small>'}</div>
       <div class="class-results-preview">
         ${rows.length ? rows.map(r => `<div class="class-result-row"><div><strong>${esc(r.student_name || 'Unnamed student')}</strong><small>${esc(examTitle(r.exam_id))}</small></div><b>${r.score}/${r.total_items}</b></div>`).join('') : emptyMini('No results yet', 'Select this section when scanning papers and its results will appear here.')}
       </div>`);
+    $('#manageRosterBtn').onclick = () => manageRoster(id);
+  }
+
+  function archiveItem(kind, id) {
+    const thing = (kind === 'classes' ? state.classes : state.exams).find(x => x.id === id);
+    if (!thing) return;
+    const label = kind === 'classes' ? classLabel(thing) : thing.title;
+    modal(`<div class="gd-dialog"><h3>Archive ${kind === 'classes' ? 'class' : 'exam'}?</h3><p>${esc(label)} will move to Archives. Its existing results and data will be preserved. You can restore it later.</p><div class="modal-actions"><button class="btn btn-soft" data-close-modal>Cancel</button><button id="archiveYes" class="btn btn-primary">Archive</button></div></div>`);
+    $('#archiveYes').onclick = async () => {
+      try { await Store.setArchived(kind, id, true); closeModal(); await refresh(); toast('Moved to Archives'); }
+      catch (e) { closeModal(); toast(Store.friendlyError(e), 'warn'); }
+    };
+  }
+
+  async function restoreItem(kind, id) {
+    try { await Store.setArchived(kind, id, false); await refresh(); toast('Restored successfully'); }
+    catch (e) { toast(Store.friendlyError(e), 'warn'); }
+  }
+
+  function renderArchives() {
+    const classes = state.classes.filter(c => c.is_archived);
+    const exams = state.exams.filter(e => e.is_archived);
+    $('#archivedClasses').innerHTML = classes.map(c => `<div class="gd-archive-row"><div><strong>${esc(classLabel(c))}</strong><small>Grade ${esc(c.grade_level || '—')} · ${state.students.filter(s => s.class_id === c.id).length} students</small></div><button class="btn btn-soft" data-restore-class="${c.id}">Restore class</button></div>`).join('') || emptyMini('No archived classes', 'Classes you archive will appear here.');
+    $('#archivedExams').innerHTML = exams.map(e => `<div class="gd-archive-row"><div><strong>${esc(e.title)}</strong><small>${e.question_count} questions · ${state.results.filter(r => r.exam_id === e.id).length} saved results</small></div><button class="btn btn-soft" data-restore-exam="${e.id}">Restore exam</button></div>`).join('') || emptyMini('No archived exams', 'Exams you archive will appear here.');
+    $$('[data-restore-class]').forEach(b => b.onclick = () => restoreItem('classes', b.dataset.restoreClass));
+    $$('[data-restore-exam]').forEach(b => b.onclick = () => restoreItem('exams', b.dataset.restoreExam));
+  }
+
+  function manageRoster(classId) {
+    const cls = state.classes.find(c => c.id === classId);
+    const students = state.students.filter(s => s.class_id === classId).sort((a,b) => (a.gender === b.gender ? a.full_name.localeCompare(b.full_name) : (a.gender === 'Male' ? -1 : 1)));
+    modal(`<div class="modal-head"><div><h3>Students · ${esc(classLabel(cls))}</h3><p>Add manually or paste several students, one name per line. Males first, then females.</p></div><button class="icon-btn" data-close-modal>✕</button></div>
+      <div class="gd-roster-top"><form id="addRosterForm" class="form-stack">
+        <label>Student name<input name="name" required placeholder="Surname, First Name"></label>
+        <div class="form-grid two compact-grid"><label>Gender<select name="gender"><option value="Male">Male</option><option value="Female">Female</option></select></label><label>LRN (optional)<input name="lrn" placeholder="Optional"></label></div>
+        <button class="btn btn-primary">+ Add student</button>
+      </form><form id="bulkRosterForm" class="form-stack"><label>Paste multiple student names<textarea name="names" rows="4" placeholder="One student per line" required></textarea></label><label>Gender<select name="gender"><option value="Male">Male</option><option value="Female">Female</option></select></label><button class="btn btn-soft">Add names</button></form></div>
+      <div class="gd-roster-heading">${students.length} students</div>
+      <div class="student-list">${students.map((s,i) => `<div><small>${i+1}</small><div><strong>${esc(s.full_name)}</strong><small>${esc(s.gender)}${s.lrn ? ' · LRN '+esc(s.lrn) : ''}</small></div><div class="row-actions"><button class="mini-action" data-edit-student="${s.id}">Edit</button><button class="mini-action danger-action" data-remove-student="${s.id}">Delete</button></div></div>`).join('') || emptyMini('No students yet','Add names above to start your roster.')}</div>`);
+    $('#addRosterForm').onsubmit = async ev => {
+      ev.preventDefault(); const f = new FormData(ev.target);
+      try { await Store.addStudents(classId, [{full_name:String(f.get('name')).trim(), gender:f.get('gender'), lrn:String(f.get('lrn')).trim()}]); await refresh(); manageRoster(classId); toast('Student added'); }
+      catch(e) { toast(Store.friendlyError(e),'warn'); }
+    };
+    $('#bulkRosterForm').onsubmit = async ev => {
+      ev.preventDefault(); const f = new FormData(ev.target); const names = String(f.get('names')).split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+      try { await Store.addStudents(classId, names.map(full_name => ({full_name, gender:f.get('gender')}))); await refresh(); manageRoster(classId); toast(`${names.length} students added`); }
+      catch(e) { toast(Store.friendlyError(e),'warn'); }
+    };
+    $$('[data-edit-student]').forEach(b => b.onclick = () => {
+      const s = students.find(x => x.id === b.dataset.editStudent);
+      modal(`<div class="modal-head"><h3>Edit student</h3><button class="icon-btn" data-close-modal>✕</button></div><form id="editStudentForm" class="form-stack"><label>Name<input name="full_name" required value="${esc(s.full_name)}"></label><label>Gender<select name="gender"><option value="Male" ${s.gender==='Male'?'selected':''}>Male</option><option value="Female" ${s.gender==='Female'?'selected':''}>Female</option></select></label><label>LRN (optional)<input name="lrn" value="${esc(s.lrn || '')}"></label><div class="modal-actions"><button type="button" class="btn btn-soft" data-close-modal>Cancel</button><button class="btn btn-primary">Save</button></div></form>`);
+      $('#editStudentForm').onsubmit = async ev => {ev.preventDefault();const f=new FormData(ev.target);try {await Store.editStudent(s.id,{full_name:String(f.get('full_name')).trim(),gender:f.get('gender'),lrn:String(f.get('lrn')).trim()||null});await refresh();manageRoster(classId);toast('Student updated');}catch(e){toast(Store.friendlyError(e),'warn');}};
+    });
+    $$('[data-remove-student]').forEach(b => b.onclick = () => {
+      const id = b.dataset.removeStudent;
+      modal(`<div class="gd-dialog"><h3>Delete student?</h3><p>This removes the student from the roster. Previously saved scan results remain unchanged.</p><div class="modal-actions"><button class="btn btn-soft" data-close-modal>Cancel</button><button class="btn btn-primary" id="confirmRemoveStudent">Delete student</button></div></div>`);
+      $('#confirmRemoveStudent').onclick = async () => {try {await Store.deleteStudent(id);await refresh();manageRoster(classId);toast('Student removed');}catch(e){toast(Store.friendlyError(e),'warn');}};
+    });
   }
 
   function newExam() {
@@ -731,10 +801,10 @@
     const currentClass = classSelect.value;
     const currentExam = examSelect.value;
 
-    classSelect.innerHTML = '<option value="">Choose a section…</option>' + state.classes.map(c =>
+    classSelect.innerHTML = '<option value="">Choose a section…</option>' + state.classes.filter(c => !c.is_archived).map(c =>
       `<option value="${c.id}">Grade ${esc(c.grade_level || '—')} • ${esc(classLabel(c))}</option>`
     ).join('');
-    examSelect.innerHTML = '<option value="">Choose an exam…</option>' + state.exams.map(e =>
+    examSelect.innerHTML = '<option value="">Choose an exam…</option>' + state.exams.filter(e => !e.is_archived).map(e =>
       `<option value="${e.id}">${esc(e.title)}</option>`
     ).join('');
 
@@ -807,6 +877,8 @@
     const r = state.scan;
     $('#scanEmpty').classList.add('hidden');
     $('#scanResult').classList.remove('hidden');
+    const suggestions = $('#scanRosterSuggestions');
+    if (suggestions) suggestions.innerHTML = state.students.filter(s => s.class_id === r.classId).map(s => `<option value="${esc(s.full_name)}"></option>`).join('');
     $('#scanConfidence').textContent = `${r.confidence}% clear responses`;
     $('#scanConfidence').className = `badge ${r.uncertain ? 'warn' : 'good'}`;
     const mirrorNote = r.cameraMirrorCorrected ? ' Camera orientation was corrected automatically.' : '';
@@ -825,7 +897,7 @@
     $('#scanResult').innerHTML = `
       <div class="scan-section-pill">SECTION: <strong>${esc(r.className)}</strong></div>
       <div class="score-hero"><div><small>SCORE</small><strong id="liveScore">${r.correct}/${r.total}</strong><span id="livePct">${r.percentage}%</span></div><div class="score-ring">${r.percentage}%</div></div>
-      <div class="review-help"><strong>Review highlighted items.</strong><span>For Multiple?, Blank?, or Light mark, choose the student's answer and press ✓ Confirm. GradeDock will not save until every highlighted item is checked.</span></div>
+      <div class="review-help"><strong>Review highlighted items.</strong><span>Check the selected answers, especially Multiple?, Blank?, or Light mark. Confirm items individually or use Confirm All after reviewing. GradeDock will not save until all are confirmed.</span><div class="review-bulk-actions"><span id="reviewPendingCount">${r.uncertain} item${r.uncertain === 1 ? '' : 's'} to confirm</span><button type="button" id="confirmAllReviewBtn" class="btn btn-soft" ${r.uncertain ? '' : 'disabled'}>✓ Confirm All</button></div></div>
       <div class="answer-review">${r.answers.map(a => {
         const needsConfirm = a.state !== 'ok';
         const options = choices.map(x => `<option value="${x}" ${x === a.answer ? 'selected' : ''}>${x || 'Blank'}</option>`).join('');
@@ -837,7 +909,7 @@
         </div>`;
       }).join('')}
       </div>
-      <div class="save-scan"><div class="scanned-name-wrap"><input id="scannedStudentName" required placeholder="Student name"><small id="nameOcrStatus">Reading the handwritten name…</small></div><div class="scan-save-actions"><button id="retryScanBtn" type="button" class="btn btn-soft">↻ Retry scan</button><button id="saveScanBtn" class="btn btn-primary" ${r.uncertain ? 'disabled' : ''}>Save to ${esc(r.className)}</button></div></div>`;
+      <div class="save-scan"><div class="scanned-name-wrap"><input id="scannedStudentName" list="scanRosterSuggestions" required placeholder="Student name"><datalist id="scanRosterSuggestions"></datalist><small id="nameOcrStatus">Reading the handwritten name…</small></div><div class="scan-save-actions"><button id="retryScanBtn" type="button" class="btn btn-soft">↻ Retry scan</button><button id="saveScanBtn" class="btn btn-primary" ${r.uncertain ? 'disabled' : ''}>Save to ${esc(r.className)}</button></div></div>`;
 
     const updateChip = a => {
       const chip = $(`[data-answer-chip="${a.question}"]`);
@@ -888,6 +960,26 @@
       }
     });
 
+    $('#confirmAllReviewBtn').onclick = () => {
+      const remaining = r.answers.filter(a => a.state !== 'ok');
+      if (!remaining.length) return;
+      modal(`<div class="confirm-all-dialog"><h3>Confirm all ${remaining.length} items?</h3
+        <p>This will accept the currently selected answer (including Blank) for every highlighted item. Please check uncertain, multiple-mark, and blank items against the paper first. This does not save the result yet.</p>
+        <div class="modal-actions"><button type="button" class="btn btn-soft" data-close-modal>Review again</button><button type="button" class="btn btn-primary" id="applyConfirmAllBtn">✓ Confirm ${remaining.length} items</button></div></div>`);
+      $('#applyConfirmAllBtn').onclick = () => {
+        remaining.forEach(a => {
+          const sel = $(`[data-review="${a.question}"]`);
+          a.answer = sel ? sel.value : a.answer;
+          a.state = 'ok';
+          a.isCorrect = Boolean(a.answer) && a.answer === a.key;
+          updateChip(a);
+        });
+        recalcScan();
+        closeModal();
+        toast(`${remaining.length} items confirmed. Check the score, then save.`);
+      };
+    };
+
     $('#retryScanBtn').onclick = retryScan;
     $('#saveScanBtn').onclick = saveScan;
   }
@@ -919,6 +1011,10 @@
     $('#livePct').textContent = `${r.percentage}%`;
     const ring = $('.score-ring');
     if (ring) ring.textContent = `${r.percentage}%`;
+    const count = $('#reviewPendingCount');
+    if (count) count.textContent = `${r.uncertain} item${r.uncertain === 1 ? '' : 's'} to confirm`;
+    const bulkBtn = $('#confirmAllReviewBtn');
+    if (bulkBtn) bulkBtn.disabled = r.uncertain === 0;
     const saveBtn = $('#saveScanBtn');
     if (saveBtn) saveBtn.disabled = r.uncertain > 0;
     const badge = $('#scanConfidence');
