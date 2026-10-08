@@ -198,67 +198,67 @@
     },
 
     findMarkers(canvas) {
-      const maxW = 900, scale = Math.min(1, maxW / canvas.width);
-      const sw = Math.max(1, Math.round(canvas.width * scale)), sh = Math.max(1, Math.round(canvas.height * scale));
-      const temp = document.createElement('canvas'); temp.width = sw; temp.height = sh;
-      const tctx = temp.getContext('2d', { willReadFrequently: true });
-      tctx.drawImage(canvas, 0, 0, sw, sh);
-      const data = tctx.getImageData(0, 0, sw, sh).data;
-      const gray = (x,y) => { const i=(y*sw+x)*4; return data[i]*.299 + data[i+1]*.587 + data[i+2]*.114; };
-      const q = (a, p) => {
-        if (!a.length) return 0;
-        const b=[...a].sort((x,y)=>x-y), pos=(b.length-1)*p, lo=Math.floor(pos), hi=Math.ceil(pos);
-        return lo===hi ? b[lo] : b[lo]*(hi-pos)+b[hi]*(pos-lo);
-      };
-      const regions = [
-        [0,0,Math.floor(sw*.38),Math.floor(sh*.30),'tl'], [Math.floor(sw*.62),0,sw,Math.floor(sh*.30),'tr'],
-        [0,Math.floor(sh*.70),Math.floor(sw*.38),sh,'bl'], [Math.floor(sw*.62),Math.floor(sh*.70),sw,sh,'br']
-      ];
-      const out = [];
-      for (const [x0,y0,x1,y1,name] of regions) {
-        const rw=x1-x0, rh=y1-y0;
-        const sampled=[];
-        for(let y=y0;y<y1;y+=3) for(let x=x0;x<x1;x+=3) sampled.push(gray(x,y));
-        const low=q(sampled,.06), paper=q(sampled,.62);
-        // Adaptive threshold keeps the black markers visible even when one side of
-        // the paper sits in a shadow. It is intentionally capped so normal text
-        // does not merge into huge components.
-        const threshold=Math.max(48,Math.min(142,low+(paper-low)*.30));
-        const seen=new Uint8Array(rw*rh), comps=[];
-        const idx=(x,y)=>(y-y0)*rw+(x-x0);
-        for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++) {
-          const si=idx(x,y); if(seen[si] || gray(x,y)>threshold) continue;
-          const stack=[[x,y]]; seen[si]=1; let area=0,minX=x,maxX=x,minY=y,maxY=y;
-          while(stack.length){
-            const [cx,cy]=stack.pop(); area++;
-            if(cx<minX)minX=cx;if(cx>maxX)maxX=cx;if(cy<minY)minY=cy;if(cy>maxY)maxY=cy;
-            for(const [nx,ny] of [[cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]]){
-              if(nx<x0||nx>=x1||ny<y0||ny>=y1) continue;
-              const ni=idx(nx,ny); if(seen[ni]) continue; seen[ni]=1;
-              if(gray(nx,ny)<=threshold) stack.push([nx,ny]);
-            }
+      // Search the whole photo: a printed form can occupy only part of the
+      // frame, and dark desks must not determine the paper's ink threshold.
+      const scale=Math.min(1,1400/Math.max(canvas.width,canvas.height));
+      const w=Math.round(canvas.width*scale), h=Math.round(canvas.height*scale);
+      const temp=document.createElement('canvas');temp.width=w;temp.height=h;
+      const ctx=temp.getContext('2d',{willReadFrequently:true});ctx.drawImage(canvas,0,0,w,h);
+      const rgba=ctx.getImageData(0,0,w,h).data,gray=new Uint8Array(w*h);
+      for(let i=0;i<gray.length;i++)gray[i]=rgba[i*4]*.299+rgba[i*4+1]*.587+rgba[i*4+2]*.114;
+      const candidates=[],stack=new Int32Array(w*h);
+      for(const threshold of [80,115,150,185]) {
+        const seen=new Uint8Array(w*h);
+        for(let seed=0;seed<gray.length;seed++) {
+          if(seen[seed]||gray[seed]>threshold)continue;
+          let length=1,area=0,minX=w,maxX=0,minY=h,maxY=0;
+          stack[0]=seed;seen[seed]=1;
+          while(length) {
+            const i=stack[--length],x=i%w,y=Math.floor(i/w);area++;
+            minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+            const neighbours=[x?i-1:-1,x<w-1?i+1:-1,y?i-w:-1,y<h-1?i+w:-1];
+            for(const n of neighbours)if(n>=0&&!seen[n]){seen[n]=1;if(gray[n]<=threshold)stack[length++]=n;}
           }
-          const bw=maxX-minX+1,bh=maxY-minY+1,box=bw*bh,ratio=bw/bh,fill=area/Math.max(1,box);
-          const minSide=Math.min(bw,bh), maxSide=Math.max(bw,bh);
-          if(area>28 && ratio>.50 && ratio<1.95 && fill>.32 && minSide>3 && maxSide<Math.max(rw,rh)*.30) {
-            comps.push({area,bw,bh,cx:(minX+maxX)/2,cy:(minY+maxY)/2,fill,ratio});
-          }
+          const bw=maxX-minX+1,bh=maxY-minY+1,fill=area/(bw*bh),ratio=bw/bh;
+          if(area<20||Math.min(bw,bh)<4||Math.max(bw,bh)>Math.min(w,h)*.12||
+             ratio<.60||ratio>1.67||fill<.82)continue;
+          const c={x:(minX+maxX)/2,y:(minY+maxY)/2,side:Math.sqrt(area),fill,area};
+          const old=candidates.find(o=>Math.hypot(o.x-c.x,o.y-c.y)<Math.min(o.side,c.side)*.45);
+          if(old){if(c.fill>old.fill)Object.assign(old,c);}else candidates.push(c);
         }
-        if(!comps.length) throw new Error('The full answer sheet is not visible yet.');
-        const corner=name==='tl'?[x0,y0]:name==='tr'?[x1,y0]:name==='bl'?[x0,y1]:[x1,y1];
-        const diag=Math.hypot(rw,rh) || 1;
-        comps.forEach(c=>{
-          const d=Math.hypot(c.cx-corner[0],c.cy-corner[1])/diag;
-          const square=1-Math.min(1,Math.abs(Math.log(Math.max(.01,c.ratio))));
-          const side=Math.min(c.bw,c.bh)/Math.max(1,Math.min(rw,rh));
-          const sizeFit=1-Math.min(1,Math.abs(side-.075)/.075);
-          c.score=(1-d)*5 + c.fill*2.2 + square*2 + sizeFit*1.4 + Math.min(1,c.area/(rw*rh*.015));
-        });
-        comps.sort((a,b)=>b.score-a.score);
-        const best=comps[0];
-        out.push({ x: best.cx/scale, y: best.cy/scale, name });
       }
-      return out;
+      const pool=candidates.sort((a,b)=>b.area-a.area).slice(0,24);
+      let best=null;
+      const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+      for(let a=0;a<pool.length-3;a++)for(let b=a+1;b<pool.length-2;b++)
+      for(let c=b+1;c<pool.length-1;c++)for(let d=c+1;d<pool.length;d++) {
+        const points=[pool[a],pool[b],pool[c],pool[d]];
+        const center={x:points.reduce((s,p)=>s+p.x,0)/4,y:points.reduce((s,p)=>s+p.y,0)/4};
+        points.sort((a,b)=>Math.atan2(a.y-center.y,a.x-center.x)-Math.atan2(b.y-center.y,b.x-center.x));
+        const sides=points.map((p,i)=>distance(p,points[(i+1)%4]));
+        const short=Math.min(...sides),long=Math.max(...sides);
+        if(short<Math.min(w,h)*.22||long/short>2.3||sides[0]/sides[2]<.6||sides[0]/sides[2]>1.67||sides[1]/sides[3]<.6||sides[1]/sides[3]>1.67)continue;
+        const sizes=points.map(p=>p.side),meanSize=sizes.reduce((a,b)=>a+b)/4;
+        if(Math.max(...sizes)/Math.min(...sizes)>1.9||meanSize/short<.017||meanSize/short>.057)continue;
+        let area=0,convex=true;
+        for(let i=0;i<4;i++) {
+          const p=points[i],q=points[(i+1)%4],r=points[(i+2)%4];
+          area+=p.x*q.y-p.y*q.x;
+          if((q.x-p.x)*(r.y-q.y)-(q.y-p.y)*(r.x-q.x)<=0)convex=false;
+        }
+        if(!convex)continue;
+        area=Math.abs(area)/2;
+        const fit=Math.abs(meanSize/short-30/896);
+        const score=area*(1-Math.min(.6,fit*12));
+        if(!best||score>best.score)best={points,score};
+      }
+      if(!best)throw new Error('Cannot locate all four printed corner squares. Include the entire answer sheet and use a sharper, evenly lit photo.');
+      // Geometric order only. analyze() tests all rotations/reflections against
+      // printed item numbers before assigning the A/B/C/D choice coordinates.
+      const points=best.points;
+      const first=points.reduce((best,p,i)=>p.x+p.y<points[best].x+points[best].y?i:best,0);
+      const clockwise=Array.from({length:4},(_,i)=>points[(first+i)%4]);
+      return [clockwise[0],clockwise[1],clockwise[3],clockwise[2]].map((p,i)=>({x:p.x/scale,y:p.y/scale,name:['tl','tr','bl','br'][i]}));
     },
 
     solveHomography(dstPts, srcPts) {
@@ -279,7 +279,25 @@
 
     map(H,x,y){ const d=H[6]*x+H[7]*y+H[8]; return {x:(H[0]*x+H[1]*y+H[2])/d, y:(H[3]*x+H[4]*y+H[5])/d}; },
 
-    extractNameRegion(canvas, H) {
+    transformCanonicalPoint(x, y, transform = 'identity') {
+      // The four registration squares are geometrically symmetric. Some mobile
+      // browsers/cameras can therefore deliver a horizontally mirrored frame
+      // without the markers revealing it. That exact failure makes A look like D
+      // (and B like C). Keep the correction explicit so every downstream reader
+      // uses the same canonical orientation.
+      let u=(x-52)/896,v=(y-52)/1310;
+      const mirrored=transform.startsWith('mirror');
+      if(mirrored)u=1-u;
+      const rotation=Number(transform.replace('mirror','').replace('rotate',''))||0;
+      if(transform==='flipX')u=1-u;
+      if(transform==='flipY')v=1-v;
+      if(rotation===90)[u,v]=[1-v,u];
+      if(rotation===180)[u,v]=[1-u,1-v];
+      if(rotation===270)[u,v]=[v,1-u];
+      return {x:52+u*896,y:52+v*1310};
+    },
+
+    extractNameRegion(canvas, H, orientationTransform = 'identity') {
       // Canonical GradeDock sheet coordinates for the handwritten Name line.
       // We intentionally stop just above the printed underline so OCR sees
       // mostly handwriting instead of a long horizontal rule.
@@ -298,7 +316,8 @@
         const cy = y0 + oy / scale;
         for (let ox = 0; ox < out.width; ox++) {
           const cx = x0 + ox / scale;
-          const p = this.map(H, cx, cy);
+          const t = this.transformCanonicalPoint(cx, cy, orientationTransform);
+          const p = this.map(H, t.x, t.y);
           const sx = Math.max(0, Math.min(canvas.width - 1, Math.round(p.x)));
           const sy = Math.max(0, Math.min(canvas.height - 1, Math.round(p.y)));
           const si = (sy * canvas.width + sx) * 4;
@@ -314,7 +333,7 @@
       return out;
     },
 
-    async readStudentName(canvas, H) {
+    async readStudentName(canvas, H, orientationTransform = 'identity') {
       if (!window.Tesseract?.createWorker) {
         return { text: '', available: false, reason: 'OCR library unavailable' };
       }
@@ -330,7 +349,7 @@
           });
         }
         const worker = await this._ocrWorkerPromise;
-        const nameCanvas = this.extractNameRegion(canvas, H);
+        const nameCanvas = this.extractNameRegion(canvas, H, orientationTransform);
         const result = await worker.recognize(nameCanvas);
         let text = String(result?.data?.text || '')
           .replace(/[_|]+/g, ' ')
@@ -358,9 +377,9 @@
       const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const pix = image.data;
 
-      // Build a clean GradeDock reference sheet once for this scan. We use its
-      // white pixels as a mask, so the printed A/B/C/D letter inside the bubble
-      // and the circle outline are not mistaken for a student's mark.
+      // Clean reference sheet. It is used for two jobs:
+      //   1) ignore the printed bubble outline/letters when measuring graphite/ink;
+      //   2) detect a mirrored camera frame before reading answers.
       const reference = window.GradeDockSheet.renderCanvas({
         title: '',
         question_count: Number(exam.question_count),
@@ -369,18 +388,7 @@
       const rctx = reference.getContext('2d', { willReadFrequently: true });
       const refData = rctx.getImageData(0, 0, reference.width, reference.height).data;
 
-      const grayAtSource = (x, y) => {
-        const sx = Math.max(0, Math.min(canvas.width - 1, Math.round(x)));
-        const sy = Math.max(0, Math.min(canvas.height - 1, Math.round(y)));
-        const i = (sy * canvas.width + sx) * 4;
-        return pix[i] * .299 + pix[i + 1] * .587 + pix[i + 2] * .114;
-      };
-      const grayAtReference = (x, y) => {
-        const rx = Math.max(0, Math.min(reference.width - 1, Math.round(x)));
-        const ry = Math.max(0, Math.min(reference.height - 1, Math.round(y)));
-        const i = (ry * reference.width + rx) * 4;
-        return refData[i] * .299 + refData[i + 1] * .587 + refData[i + 2] * .114;
-      };
+      const clamp = (v, a=0, b=1) => Math.max(a, Math.min(b, v));
       const quantile = (values, q) => {
         if (!values.length) return 0;
         const a = [...values].sort((x, y) => x - y);
@@ -392,123 +400,194 @@
       };
       const median = values => quantile(values, .5);
 
-      const bubbleInk = (cx, cy) => {
-        // Sample a bubble against the paper immediately around it. This local
-        // contrast approach is deliberately shadow-tolerant: a pencil mark is
-        // compared with nearby paper, not with one fixed global gray value.
-        const sampleAt = (ox = 0, oy = 0) => {
-          const bg = [];
-          for (let dy = -22; dy <= 22; dy += 2) {
-            for (let dx = -22; dx <= 22; dx += 2) {
-              const d2 = dx * dx + dy * dy;
-              if (d2 < 225 || d2 > 484) continue; // radius 15..22
-              if (grayAtReference(cx + dx + ox, cy + dy + oy) < 244) continue;
-              const p = this.map(H, cx + dx + ox, cy + dy + oy);
-              bg.push(grayAtSource(p.x, p.y));
-            }
-          }
-          const paper = quantile(bg, .80) || quantile(bg, .65) || 255;
-          const denom = Math.max(58, paper - 35);
-          const inside = [];
-          let inkSum = 0, dark12 = 0, dark20 = 0, dark32 = 0, total = 0;
-          for (let dy = -11; dy <= 11; dy++) {
-            for (let dx = -11; dx <= 11; dx++) {
-              if (dx * dx + dy * dy > 112) continue;
-              // Ignore the printed bubble outline/letter using the clean template,
-              // while keeping as much writable white area as possible.
-              if (grayAtReference(cx + dx + ox, cy + dy + oy) < 224) continue;
-              const p = this.map(H, cx + dx + ox, cy + dy + oy);
-              const g = grayAtSource(p.x, p.y);
-              inside.push(g);
-              inkSum += Math.max(0, Math.min(1, (paper - g) / denom));
-              if (g < paper - 12) dark12++;
-              if (g < paper - 20) dark20++;
-              if (g < paper - 32) dark32++;
-              total++;
-            }
-          }
-          if (!total) return { score: 0, paper, total: 0 };
-          const darkestBand = Math.max(0, Math.min(1, (paper - quantile(inside, .18)) / denom));
-          const meanInk = inkSum / total;
-          // Multiple complementary signals make faint graphite much less likely
-          // to be called blank, while local normalization suppresses shadows.
-          const score = .28 * meanInk + .20 * (dark12 / total) + .25 * (dark20 / total) + .12 * (dark32 / total) + .15 * darkestBand;
-          return { score, paper, meanInk, dark12: dark12 / total, dark20: dark20 / total, darkestBand, total };
+      // Bilinear sampling is noticeably more stable than rounding to one source
+      // pixel when a phone photo is skewed. This reduces false choice shifts near
+      // bubble edges after perspective correction.
+      const grayAtSource = (x, y) => {
+        x = clamp(x, 0, canvas.width - 1);
+        y = clamp(y, 0, canvas.height - 1);
+        const x0 = Math.floor(x), y0 = Math.floor(y);
+        const x1 = Math.min(canvas.width - 1, x0 + 1), y1 = Math.min(canvas.height - 1, y0 + 1);
+        const tx = x - x0, ty = y - y0;
+        const g = (xx, yy) => {
+          const i = (yy * canvas.width + xx) * 4;
+          return pix[i] * .299 + pix[i + 1] * .587 + pix[i + 2] * .114;
         };
-
-        // Small homography/camera errors can move a bubble a couple of pixels.
-        // Measure nearby offsets and retain the strongest legitimate ink signal.
-        const samples = [[0,0],[-2,0],[2,0],[0,-2],[0,2]].map(([ox,oy]) => sampleAt(ox,oy));
-        samples.sort((a,b) => b.score - a.score);
-        return samples[0] || { score: 0 };
+        const a = g(x0,y0) * (1-tx) + g(x1,y0) * tx;
+        const b = g(x0,y1) * (1-tx) + g(x1,y1) * tx;
+        return a * (1-ty) + b * ty;
+      };
+      const grayAtReference = (x, y) => {
+        const rx = Math.max(0, Math.min(reference.width - 1, Math.round(x)));
+        const ry = Math.max(0, Math.min(reference.height - 1, Math.round(y)));
+        const i = (ry * reference.width + rx) * 4;
+        return refData[i] * .299 + refData[i + 1] * .587 + refData[i + 2] * .114;
       };
 
-      // Measure every bubble first. Final decisions use both sheet-wide noise and
-      // the difference between choices in the same row. Uncertain light marks are
-      // preserved for teacher confirmation rather than silently changed to blank.
-      const measured = L.items.map(item => ({
-        item,
-        raw: item.bubbles.map(b => {
-          const metric = bubbleInk(b.x, b.y);
-          return { choice: b.choice, score: metric.score, metric };
-        })
-      }));
-      const allRaw = measured.flatMap(m => m.raw.map(x => x.score));
-      const globalBase = quantile(allRaw, .25);
-      const lowBand = allRaw.filter(v => v <= quantile(allRaw, .60));
-      const lowMedian = median(lowBand);
-      const mad = median(lowBand.map(v => Math.abs(v - lowMedian)));
-      const noise = Math.max(.0012, mad * 1.4826);
+      // Estimate paper brightness from the captured page. We use a high quantile,
+      // not a fixed 255, so shadows and slightly gray paper do not destroy the
+      // contrast calculations.
+      const pageBrightnessSamples = [];
+      for (let y = 0; y < canvas.height; y += Math.max(10, Math.floor(canvas.height / 55))) {
+        for (let x = 0; x < canvas.width; x += Math.max(10, Math.floor(canvas.width / 45))) {
+          pageBrightnessSamples.push(grayAtSource(x, y));
+        }
+      }
+      const pagePaper = Math.max(120, quantile(pageBrightnessSamples, .82));
 
-      // A very small amount of extra ink is kept as a possible light mark instead
-      // of becoming blank. Strong marks still need a healthy lead over #2.
-      const blankThreshold = Math.max(.0030, noise * .72);
-      const weakThreshold = Math.max(.0060, noise * 1.20);
-      const strongThreshold = Math.max(.0170, noise * 2.25);
+      // The old scanner could read A as D when the camera feed was horizontally
+      // mirrored. The four corner blocks cannot expose that because they are
+      // symmetric. Detect the orientation from the asymmetric printed item-number
+      // columns, then keep that correction for every bubble and OCR sample.
+      const orientationScore = (transform) => {
+        let score = 0, count = 0;
+        const itemStep = Math.max(1, Math.floor(L.items.length / 22));
+        for (let n = 0; n < L.items.length; n += itemStep) {
+          const item = L.items[n];
+          for (let dy = -8; dy <= 8; dy += 2) {
+            for (let dx = -15; dx <= 15; dx += 2) {
+              const cx = item.numberX + dx, cy = item.y + dy;
+              const rg = grayAtReference(cx, cy);
+              if (rg > 150) continue; // only compare known printed-number ink
+              const t = this.transformCanonicalPoint(cx, cy, transform);
+              const p = this.map(H, t.x, t.y);
+              const sg = grayAtSource(p.x, p.y);
+              const darkness = clamp((pagePaper - sg) / Math.max(65, pagePaper - 30));
+              // Darker reference pixels carry slightly more weight.
+              score += darkness * (1 + (150 - rg) / 180);
+              count++;
+            }
+          }
+        }
+        return count ? score / count : 0;
+      };
+      const orientationCandidates = ['identity','rotate90','rotate180','rotate270','mirror0','mirror90','mirror180','mirror270']
+        .map(transform => ({transform, score:orientationScore(transform)}))
+        .sort((a,b)=>b.score-a.score);
+      const winner=orientationCandidates[0], runnerUp=orientationCandidates[1];
+      if (winner.score < .25 || winner.score-runnerUp.score < .12) {
+        throw new Error('The printed item numbers are not clear enough to determine the sheet orientation. Use the matching GradeDock sheet, place it upright, and retake a sharper photo.');
+      }
+      const orientationTransform=winner.transform;
+      const normalOrientationScore=orientationCandidates.find(x=>x.transform==='identity').score;
+      const mirroredOrientationScore=orientationCandidates.find(x=>x.transform==='mirror0').score;
+
+      const mapCanonical = (x, y) => {
+        const t = this.transformCanonicalPoint(x, y, orientationTransform);
+        return this.map(H, t.x, t.y);
+      };
+
+      // Register the printed circle outlines, never the student's chosen answer.
+      // Row and individual-circle offsets stay below half the choice spacing.
+      const rowOffsets = new Map();
+      const bubbleOffsets = new Map();
+      let alignedRows = 0;
+      const ringFit=(b,ox,oy)=>{
+        let sum=0;
+        for(let k=0;k<24;k++){
+          const angle=k*Math.PI/12;
+          const sample=radius=>{
+            const p=mapCanonical(b.x+ox+Math.cos(angle)*radius,b.y+oy+Math.sin(angle)*radius);
+            return grayAtSource(p.x,p.y);
+          };
+          sum+=(sample(16)-sample(12))/255;
+        }
+        return sum/24;
+      };
+      // Paper curl can move a row more than a few pixels after a four-corner
+      // warp. Search less than half a row/choice spacing, then refine each ring.
+      const rowGap=L.rows>1?(L.rowBottom-L.rowTop)/(L.rows-1):48;
+      const maxY=Math.min(18,Math.floor(rowGap*.36));
+      for(const item of L.items){
+        let best={score:-Infinity,x:0,y:0};
+        const evaluate=(ox,oy)=>{
+          const score=median(item.bubbles.map(b=>ringFit(b,ox,oy)))-.00002*(ox*ox+oy*oy);
+          if(score>best.score)best={score,x:ox,y:oy};
+        };
+        for(let oy=-maxY;oy<=maxY;oy+=2)for(let ox=-16;ox<=16;ox+=2)evaluate(ox,oy);
+        const coarse={...best};
+        for(let oy=coarse.y-1;oy<=coarse.y+1;oy++)for(let ox=coarse.x-1;ox<=coarse.x+1;ox++)evaluate(ox,oy);
+        rowOffsets.set(item.number,best);
+        if(best.score>.10)alignedRows++;
+        for(const bubble of item.bubbles){
+          let fit={score:-Infinity,x:best.x,y:best.y};
+          for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
+            const score=ringFit(bubble,best.x+dx,best.y+dy)-.001*(dx*dx+dy*dy);
+            if(score>fit.score)fit={score,x:best.x+dx,y:best.y+dy};
+          }
+          bubbleOffsets.set(bubble,fit);
+        }
+      }
+      if (alignedRows < Math.ceil(L.items.length * .70)) {
+        throw new Error('The answer circles do not line up clearly with this exam. Check the selected exam/item count, flatten the paper, and retake a sharper photo with all four corner squares visible.');
+      }
+
+      const bubbleInk = (cx, cy, offset) => {
+        const sample = (dx,dy) => {
+          const p = mapCanonical(cx + offset.x + dx, cy + offset.y + dy);
+          return grayAtSource(p.x,p.y);
+        };
+        const bg = [];
+        for (let k=0;k<32;k++) {
+          const angle=k*Math.PI/16;
+          bg.push(sample(17*Math.cos(angle),17*Math.sin(angle)));
+        }
+        const paper = quantile(bg,.75);
+        const span = Math.max(60,paper-25);
+        let count=0, dark=0, contrast=0;
+        const sectors=Array.from({length:4},()=>({n:0,dark:0}));
+        // Use identical writable areas for A through E. Exclude the entire
+        // printed-letter rectangle (PDF/PNG/browser fonts differ), plus the
+        // circle boundary. Do not hunt for the darkest neighbouring pixels.
+        for(let dy=-9;dy<=9;dy++) for(let dx=-9;dx<=9;dx++) {
+          if(dx*dx+dy*dy>90.25 || (Math.abs(dx)<=5.5 && Math.abs(dy)<=7.5)) continue;
+          const delta=Math.max(0,paper-sample(dx,dy));
+          const marked=delta>Math.max(22,span*.14);
+          const sector=(dy>=0?2:0)+(dx>=0?1:0);
+          sectors[sector].n++;
+          if(marked){dark++;sectors[sector].dark++;}
+          contrast+=clamp(delta/span);
+          count++;
+        }
+        const coverage=count?dark/count:0;
+        const meanContrast=count?contrast/count:0;
+        const supportedSectors=sectors.filter(s=>s.n && s.dark/s.n>=.30).length;
+        return {score:.70*coverage+.30*meanContrast, coverage, meanContrast,
+          supportedSectors, paper, total:count};
+      };
+      const measured=L.items.map(item=>({item,raw:item.bubbles.map(b=>{
+        const metric=bubbleInk(b.x,b.y,bubbleOffsets.get(b));
+        return {choice:b.choice,score:metric.score,metric};
+      })}));
+      const markThreshold=.16, lightMarkThreshold=.24, strongMarkThreshold=.40;
+      const discriminationMargin=.14;
+      const noise=0, globalBase=0;
 
       const detected = [];
       let uncertain = 0, correct = 0;
 
       for (const row of measured) {
-        const adjusted = row.raw.map(x => ({
-          choice: x.choice,
-          rawScore: x.score,
-          metric: x.metric,
-          adjusted: Math.max(0, x.score - globalBase)
-        }));
-        const sortedAdjusted = adjusted.map(x => x.adjusted).sort((a, b) => a - b);
-        const lowCount = Math.max(2, Math.floor(sortedAdjusted.length / 2));
-        const rowBase = sortedAdjusted.slice(0, lowCount).reduce((a, b) => a + b, 0) / lowCount;
-        const scores = adjusted.map(x => ({
-          choice: x.choice,
-          score: Math.max(0, x.adjusted - rowBase),
-          rawScore: x.rawScore,
-          metric: x.metric
-        })).sort((a, b) => b.score - a.score);
-
-        const best = scores[0] || { choice: '', score: 0 };
-        const second = scores[1] || { choice: '', score: 0 };
-        let answer = '';
-        let state = 'ok';
-
-        const margin = Math.max(0, best.score - second.score);
-        if (best.score < blankThreshold) {
-          state = 'blank';
-          uncertain++;
-        } else if (second.score >= weakThreshold && second.score >= best.score * .55) {
-          // Two bubbles contain comparable local ink. Never guess between them.
-          answer = best.choice;
-          state = 'multiple';
-          uncertain++;
-        } else {
-          answer = best.choice;
-          if (best.score < strongThreshold || margin < weakThreshold) {
-            // Preserve faint/partial shading as the likely answer and surface it
-            // for teacher confirmation instead of incorrectly calling it blank.
-            state = 'low';
-            uncertain++;
-          }
+        const scores = row.raw.map(x => ({...x,rawScore:x.score})).sort((a,b)=>b.score-a.score);
+        const best=scores[0], second=scores[1];
+        const margin=best.score-second.score;
+        const hasMark = x => x.score>=lightMarkThreshold &&
+          x.metric.coverage>=.30 && x.metric.supportedSectors>=2;
+        let answer='', state='blank';
+        if (hasMark(best) && hasMark(second)) {
+          // Two marks remain unresolved even if one is darker. Never choose
+          // an answer based on the answer key or silently pick the darkest.
+          state='multiple';
+        } else if (hasMark(best)) {
+          answer=best.choice;
+          state=best.score>=strongMarkThreshold && margin>=discriminationMargin &&
+            best.metric.coverage>=.50 && best.metric.supportedSectors>=3 ? 'ok' : 'low';
+        } else if (best.score>=markThreshold) {
+          state='low';
         }
+        if (rowOffsets.get(row.item.number).score <= .10) {
+          answer=''; state='low';
+        }
+        if (state!=='ok') uncertain++;
 
         const key = answerKey[row.item.number - 1] || '';
         const isCorrect = state === 'ok' && answer === key;
@@ -520,11 +599,16 @@
           isCorrect,
           state,
           scores,
-          thresholds: { blank: blankThreshold, weak: weakThreshold, strong: strongThreshold }
+          thresholds: {
+            mark: markThreshold,
+            light: lightMarkThreshold,
+            strong: strongMarkThreshold,
+            discrimination: discriminationMargin
+          }
         });
       }
 
-      const confidence = Math.max(0, Math.round(100 - (uncertain / L.items.length * 62)));
+      const confidence = Math.round(100 * (L.items.length - uncertain) / L.items.length);
       return {
         markers,
         answers: detected,
@@ -534,7 +618,18 @@
         uncertain,
         confidence,
         homography: H,
-        sensitivity: { blankThreshold, weakThreshold, strongThreshold, noise, globalBase }
+        orientationTransform,
+        cameraMirrorCorrected: orientationTransform !== 'identity',
+        orientationScores: { normal: normalOrientationScore, mirrored: mirroredOrientationScore },
+        alignment: { alignedRows, totalRows: L.items.length },
+        sensitivity: {
+          markThreshold,
+          lightMarkThreshold,
+          strongMarkThreshold,
+          discriminationMargin,
+          noise,
+          globalBase
+        }
       };
     }
   };

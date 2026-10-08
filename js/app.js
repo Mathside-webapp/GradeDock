@@ -807,7 +807,7 @@
     const r = state.scan;
     $('#scanEmpty').classList.add('hidden');
     $('#scanResult').classList.remove('hidden');
-    $('#scanConfidence').textContent = `${r.confidence}% confidence`;
+    $('#scanConfidence').textContent = `${r.confidence}% clear responses`;
     $('#scanConfidence').className = `badge ${r.uncertain ? 'warn' : 'good'}`;
     const mirrorNote = r.cameraMirrorCorrected ? ' Camera orientation was corrected automatically.' : '';
     $('#scanStatusText').textContent = r.uncertain
@@ -818,7 +818,7 @@
     const stateLabel = a => {
       if (a.state === 'multiple') return 'Multiple marks — choose one';
       if (a.state === 'blank') return 'No clear mark — confirm blank or choose';
-      if (a.state === 'low') return `Light mark detected: ${a.answer || '—'} — confirm`;
+      if (a.state === 'low') return `Unclear mark: ${a.answer || '—'} — confirm`;
       return a.answer ? (a.isCorrect ? '✓ Correct' : `✕ Key: ${a.key}`) : 'Blank';
     };
 
