@@ -521,13 +521,18 @@
 
 .gd-sf1-import .btn{margin-top:8px;margin-right:7px;display:inline-flex}
 
-.gd-bulk-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0 18px;padding:14px;background:#f3f5f7;border:1px solid #d6dbe1;border-radius:12px}
-.gd-select{display:inline-flex!important;align-items:center;gap:8px;font-size:13px;white-space:nowrap;margin:0 0 8px}
-.gd-select input{width:18px!important;height:18px;min-height:0;padding:0;accent-color:#7c243a}
-.gd-import-preview{max-height:45vh;overflow:auto;border:1px solid #ddd;border-radius:10px;margin:16px 0}
-.gd-import-preview table{width:100%;border-collapse:collapse}.gd-import-preview th,.gd-import-preview td{padding:10px;text-align:left;border-bottom:1px solid #ddd}.gd-import-preview th{position:sticky;top:0;background:#f3f5f7}
-.gd-confirm-list{max-height:30vh;overflow:auto;padding-left:24px}.gd-confirm-list li{margin:8px 0}
-button[aria-busy="true"]{cursor:wait;opacity:.75}button[aria-busy="true"]::before{content:'';display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;margin-right:7px;animation:gd-spin .8s linear infinite}
-@keyframes gd-spin{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){button[aria-busy="true"]::before{animation:none}}
-@media(max-width:600px){.gd-bulk-bar{gap:8px}.gd-bulk-bar .btn{flex:1}.gd-archive-row{flex-wrap:wrap}.gd-import-preview{font-size:12px}}
+/* GradeDock official SF1 auto-import preview */
+.gd-sf1-preview{margin:14px 0;border:1px solid #d9e2ee;border-radius:14px;background:#fff;overflow:hidden}
+.gd-sf1-preview[hidden]{display:none}
+.gd-sf1-summary{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;padding:12px 14px;background:#f1f5fa;color:#152947}
+.gd-sf1-summary small{color:#475569}
+.gd-sf1-preview-scroller{max-height:250px;overflow:auto;overscroll-behavior:contain}
+.gd-sf1-table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}
+.gd-sf1-table th{position:sticky;top:0;background:#f8fafc;z-index:1;color:#334155;padding:9px 10px;border-bottom:1px solid #dbe3eb}
+.gd-sf1-table td{padding:8px 10px;border-bottom:1px solid #e9edf4;line-height:1.35}
+.gd-sf1-table td:last-child{white-space:nowrap;font-size:11px;color:#64748b}
+.gd-sf1-review-note{display:block;padding:12px 14px;color:#59677b}
+.gd-sf1-import #gdSF1Import{width:100%;margin:12px 0 5px}
+.gd-sf1-import #gdSF1Import:disabled{opacity:.55;cursor:not-allowed}
+.gd-sf1-template-link{display:inline-block;font-size:12px;color:#45617f;margin-top:8px}
+@media(max-width:650px){.gd-sf1-table{font-size:11px}.gd-sf1-table th,.gd-sf1-table td{padding:8px 6px}}

@@ -56,12 +56,11 @@
   }
 
   function modal(html) {
-    $('#modalHost').innerHTML = `<div class="modal-backdrop"><div class="modal-card" role="dialog" aria-modal="true" aria-label="GradeDock dialog" tabindex="-1">${html}</div></div>`;
+    $('#modalHost').innerHTML = `<div class="modal-backdrop"><div class="modal-card">${html}</div></div>`;
     $('.modal-backdrop').addEventListener('click', e => {
-      // Close only with explicit dialog buttons.
+      if (e.target === e.currentTarget) closeModal();
     });
     $$('[data-close-modal]').forEach(b => b.onclick = closeModal);
-    $('.modal-card')?.focus();
   }
 
   function closeModal() { $('#modalHost').innerHTML = ''; }
@@ -164,17 +163,15 @@
       return `
         <article class="class-card" data-class="${c.id}">
           <div class="class-color"></div>
-          <label class="gd-select"><input type="checkbox" data-select-item="${c.id}" aria-label="Select ${esc(classLabel(c))}"> Select</label><span class="kicker">GRADE ${esc(c.grade_level || '—')}</span>
+          <span class="kicker">GRADE ${esc(c.grade_level || '—')}</span>
           <h3>${esc(classLabel(c))}</h3>
           <p>${esc(c.school_year || 'School year not set')}</p>
           <div class="class-meta"><span>${students} student${students === 1 ? '' : 's'}</span><span>${scans} result${scans === 1 ? '' : 's'}</span></div>
-          <div class="gd-flex-buttons"><button class="btn btn-soft" data-open-class="${c.id}">Open class</button><button class="btn btn-soft" data-archive-class="${c.id}">Archive</button><button class="btn btn-danger" data-delete-class="${c.id}">Delete</button></div>
+          <div class="gd-flex-buttons"><button class="btn btn-soft" data-open-class="${c.id}">Open class</button><button class="btn btn-soft" data-archive-class="${c.id}">Archive</button></div>
         </article>`;
     }).join('') || `<div class="empty-state"><span>▦</span><h4>No classes found</h4><p>Create a grade level and section to organize scan results.</p></div>`;
 
     $$('[data-open-class]').forEach(b => b.onclick = () => openClass(b.dataset.openClass));
-    $$('[data-delete-class]').forEach(b => b.onclick = () => bulkAction('classes', [b.dataset.deleteClass], 'delete'));
-    setupSelection('classesGrid','classes');
     $$('[data-archive-class]').forEach(b => b.onclick = () => archiveItem('classes', b.dataset.archiveClass));
   }
 
@@ -186,7 +183,7 @@
     const scanLabel = compact ? '⌗ Scan' : '⌗ Scan Papers';
     return `
       <div class="exam-row">
-        ${compact ? '' : `<label class="gd-select"><input type="checkbox" data-select-item="${exam.id}" aria-label="Select ${esc(exam.title)}"> Select</label>`}<div class="exam-icon">${exam.question_count}</div>
+        <div class="exam-icon">${exam.question_count}</div>
         <div class="exam-main"><strong>${esc(exam.title)}</strong><small>${exam.question_count} items • A–${String.fromCharCode(64 + Number(exam.choice_count || 4))} • ${count} scan${count === 1 ? '' : 's'}</small></div>
         ${compact ? '' : '<span class="muted">Answer sheet available anytime</span>'}
         <div class="row-actions exam-actions">
@@ -220,7 +217,6 @@
       .map(e => examRow(e))
       .join('') || `<div class="empty-state"><span>▤</span><h4>No exams found</h4><p>Create an exam first to download its scanner-ready answer sheet. The correct answers can be added later.</p></div>`;
     bindExamRowActions();
-    setupSelection('examList','exams');
   }
 
   function renderResults() {
@@ -371,7 +367,7 @@
           await Store.updateResultAnswers(resultId, answers);
           closeModal();
           await refresh();
-          successModal('Result updated','Student answers and score were saved.');
+          toast('Student answers and score updated');
         } catch (err) {
           btn.disabled = false;
           btn.textContent = 'Save answer changes';
@@ -484,49 +480,29 @@
     $('#manageRosterBtn').onclick = () => manageRoster(id);
   }
 
-  function setupSelection(containerId,kind,archived=false) {
-    const container=document.getElementById(containerId);
-    document.getElementById(containerId+'Bulk')?.remove();
-    const boxes=[...container.querySelectorAll('[data-select-item]')];
-    if(!boxes.length)return;
-    const bar=document.createElement('div');bar.id=containerId+'Bulk';bar.className='gd-bulk-bar';
-    bar.innerHTML=`<label class="gd-select"><input type="checkbox" data-all> Select all shown</label><span data-count>0 selected</span><button class="btn btn-soft" data-bulk="${archived?'restore':'archive'}" disabled>${archived?'Restore':'Archive'} selected</button><button class="btn btn-danger" data-bulk="delete" disabled>Delete selected</button>`;
-    container.before(bar);
-    const all=bar.querySelector('[data-all]');
-    const update=()=>{const n=boxes.filter(b=>b.checked).length;all.checked=n===boxes.length;all.indeterminate=n>0&&n<boxes.length;bar.querySelector('[data-count]').textContent=n+' selected';bar.querySelectorAll('button').forEach(b=>b.disabled=!n);};
-    all.onchange=()=>{boxes.forEach(b=>b.checked=all.checked);update();};boxes.forEach(b=>b.onchange=update);
-    bar.querySelectorAll('[data-bulk]').forEach(b=>b.onclick=()=>bulkAction(kind,boxes.filter(x=>x.checked).map(x=>x.dataset.selectItem),b.dataset.bulk));
-  }
-
-  function bulkAction(kind,ids,action) {
-    const items=state[kind].filter(x=>ids.includes(x.id));if(!items.length)return;
-    const label=action[0].toUpperCase()+action.slice(1);
-    const related=state.results.filter(r=>ids.includes(kind==='classes'?r.class_id:r.exam_id)).length;
-    const warning=action==='delete' ? `Permanently remove these ${kind} and ${related} saved results with their answers. ${kind==='classes'?'Student rosters will also be removed; shared exams remain.':'Exam answer keys will also be removed.'} This cannot be undone.` : action==='archive'?'Move these items to Archives. Students, answer keys and results will be preserved.':'Return these items to the active list with their saved data.';
-    modal(`<h3>${label} ${items.length} ${kind}?</h3><p>${esc(warning)}</p><ul class="gd-confirm-list">${items.map(x=>`<li>${esc(kind==='classes'?classLabel(x):x.title)}</li>`).join('')}</ul><p id="bulkStatus" role="status"></p><div class="modal-actions"><button class="btn btn-soft" data-close-modal>Cancel</button><button id="bulkConfirm" class="btn ${action==='delete'?'btn-danger':'btn-primary'}">${label}</button></div>`);
-    $('#bulkConfirm').onclick=async()=>{
-      let completed=0;const failures=[];
-      for(const item of items){
-        $('#bulkStatus').textContent=`${label}: ${completed+failures.length+1} of ${items.length}`;
-        try{if(action==='delete')await (kind==='classes'?Store.deleteClass(item.id):Store.deleteExam(item.id));else await Store.setArchived(kind,item.id,action==='archive');completed++;}
-        catch(e){failures.push((kind==='classes'?classLabel(item):item.title)+': '+Store.friendlyError(e));}
-      }
-      try{await refresh();}catch(e){failures.push('Refresh failed: '+Store.friendlyError(e));}
-      successModal(failures.length?'Action finished with errors':`${label} complete`,`${completed} of ${items.length} ${kind} ${action==='delete'?'deleted':action==='archive'?'archived':'restored'}.`,failures.join('\n'));
+  function archiveItem(kind, id) {
+    const thing = (kind === 'classes' ? state.classes : state.exams).find(x => x.id === id);
+    if (!thing) return;
+    const label = kind === 'classes' ? classLabel(thing) : thing.title;
+    modal(`<div class="gd-dialog"><h3>Archive ${kind === 'classes' ? 'class' : 'exam'}?</h3><p>${esc(label)} will move to Archives. Its existing results and data will be preserved. You can restore it later.</p><div class="modal-actions"><button class="btn btn-soft" data-close-modal>Cancel</button><button id="archiveYes" class="btn btn-primary">Archive</button></div></div>`);
+    $('#archiveYes').onclick = async () => {
+      try { await Store.setArchived(kind, id, true); closeModal(); await refresh(); toast('Moved to Archives'); }
+      catch (e) { closeModal(); toast(Store.friendlyError(e), 'warn'); }
     };
   }
-  function archiveItem(kind,id){bulkAction(kind,[id],'archive');}
-  function restoreItem(kind,id){bulkAction(kind,[id],'restore');}
+
+  async function restoreItem(kind, id) {
+    try { await Store.setArchived(kind, id, false); await refresh(); toast('Restored successfully'); }
+    catch (e) { toast(Store.friendlyError(e), 'warn'); }
+  }
+
   function renderArchives() {
-    for(const kind of ['classes','exams']){
-      const target=kind==='classes'?'archivedClasses':'archivedExams';
-      const items=state[kind].filter(x=>x.is_archived);
-      document.getElementById(target).innerHTML=items.map(x=>`<div class="gd-archive-row"><label class="gd-select"><input type="checkbox" data-select-item="${x.id}" aria-label="Select ${esc(kind==='classes'?classLabel(x):x.title)}"> Select</label><strong>${esc(kind==='classes'?classLabel(x):x.title)}</strong><div class="row-actions"><button class="btn btn-soft" data-restore="${x.id}">Restore</button><button class="btn btn-danger" data-delete="${x.id}">Delete</button></div></div>`).join('')||emptyMini('No archived '+kind,'Archived items appear here.');
-      const root=document.getElementById(target);
-      root.querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>restoreItem(kind,b.dataset.restore));
-      root.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>bulkAction(kind,[b.dataset.delete],'delete'));
-      setupSelection(target,kind,true);
-    }
+    const classes = state.classes.filter(c => c.is_archived);
+    const exams = state.exams.filter(e => e.is_archived);
+    $('#archivedClasses').innerHTML = classes.map(c => `<div class="gd-archive-row"><div><strong>${esc(classLabel(c))}</strong><small>Grade ${esc(c.grade_level || '—')} · ${state.students.filter(s => s.class_id === c.id).length} students</small></div><button class="btn btn-soft" data-restore-class="${c.id}">Restore class</button></div>`).join('') || emptyMini('No archived classes', 'Classes you archive will appear here.');
+    $('#archivedExams').innerHTML = exams.map(e => `<div class="gd-archive-row"><div><strong>${esc(e.title)}</strong><small>${e.question_count} questions · ${state.results.filter(r => r.exam_id === e.id).length} saved results</small></div><button class="btn btn-soft" data-restore-exam="${e.id}">Restore exam</button></div>`).join('') || emptyMini('No archived exams', 'Exams you archive will appear here.');
+    $$('[data-restore-class]').forEach(b => b.onclick = () => restoreItem('classes', b.dataset.restoreClass));
+    $$('[data-restore-exam]').forEach(b => b.onclick = () => restoreItem('exams', b.dataset.restoreExam));
   }
 
   function manageRoster(classId) {
@@ -537,63 +513,83 @@
         <label>Student name<input name="name" required placeholder="Surname, First Name"></label>
         <div class="form-grid two compact-grid"><label>Gender<select name="gender"><option value="Male">Male</option><option value="Female">Female</option><option value="Unspecified">Unspecified</option></select></label><label>LRN (optional)<input name="lrn" placeholder="Optional"></label></div>
         <button class="btn btn-primary">+ Add student</button>
-      </form><div class="gd-sf1-import"><strong>Import School Form 1 (SF1)</strong><p>Accepts DepEd SF1 (.xls and .xlsx), ordinary Excel lists, or CSV. Detects Male/Female sections automatically and supports names and optional LRN. No gender dropdown required. Duplicates are skipped.</p><input id="gdSF1Input" type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"><a class="btn btn-soft" href="templates/GradeDock-Student-Import-Template.xlsx" download>Download sample template</a><button type="button" class="btn btn-soft" id="gdSF1Import">Import students</button><small id="gdSF1Info" role="status"></small></div></div>
+      </form><div class="gd-sf1-import"><strong>Import DepEd School Form 1 (SF1)</strong><p>Choose your SF1 Excel file. GradeDock reads the names, LRNs, and Male/Female entries automatically. Check the preview, then add the students to this class.</p><input id="gdSF1Input" type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"><small id="gdSF1Info" role="status" aria-live="polite">Select a file to preview the students.</small><div id="gdSF1Preview" class="gd-sf1-preview" hidden></div><button type="button" class="btn btn-primary" id="gdSF1Import" disabled>Import students</button><a class="gd-sf1-template-link" href="templates/GradeDock-Student-Import-Template.xlsx" download>Download a simple Excel template</a></div></div>
       <div class="gd-roster-heading">${students.length} students</div>
-      <div id="rosterSelection" class="gd-bulk-bar"><label class="gd-select"><input type="checkbox" id="allStudents"> Select all students</label><button class="btn btn-danger" id="deleteStudents" disabled>Delete selected</button></div><div class="student-list">${students.map((s,i) => `<div><label class="gd-select"><input type="checkbox" data-student-select="${s.id}" aria-label="Select ${esc(s.full_name)}">${i+1}</label><div><strong>${esc(s.full_name)}</strong><small>${esc(s.gender)}${s.lrn ? ' · LRN '+esc(s.lrn) : ''}</small></div><div class="row-actions"><button class="mini-action" data-edit-student="${s.id}">Edit</button><button class="mini-action danger-action" data-remove-student="${s.id}">Delete</button></div></div>`).join('') || emptyMini('No students yet','Add names above to start your roster.')}</div>`);
-    const studentBoxes=$$('[data-student-select]');
-    const updateStudentSelection=()=>{const n=studentBoxes.filter(b=>b.checked).length;$('#deleteStudents').disabled=!n;$('#deleteStudents').textContent=n?`Delete selected (${n})`:'Delete selected';$('#allStudents').checked=n>0&&n===studentBoxes.length;$('#allStudents').indeterminate=n>0&&n<studentBoxes.length;};
-    $('#allStudents').onchange=()=>{studentBoxes.forEach(b=>b.checked=$('#allStudents').checked);updateStudentSelection();};
-    studentBoxes.forEach(b=>b.onchange=updateStudentSelection);
-    $('#deleteStudents').onclick=()=>{
-      const ids=studentBoxes.filter(b=>b.checked).map(b=>b.dataset.studentSelect);
-      modal(`<h3>Delete ${ids.length} students?</h3><p>Remove the selected names from this roster. Previously saved scan results stay unchanged.</p><ul class="gd-confirm-list">${students.filter(s=>ids.includes(s.id)).map(s=>`<li>${esc(s.full_name)}</li>`).join('')}</ul><div class="modal-actions"><button class="btn btn-soft" id="cancelStudentDelete">Cancel</button><button class="btn btn-danger" id="confirmStudentsDelete">Delete students</button></div>`);
-      $('#cancelStudentDelete').onclick=()=>manageRoster(classId);
-      $('#confirmStudentsDelete').onclick=async()=>{
-        let deleted=0;const failed=[];
-        for(const id of ids){try{await Store.deleteStudent(id);deleted++;}catch(e){failed.push(Store.friendlyError(e));}}
-        try{await refresh();}catch(e){failed.push(Store.friendlyError(e));}
-        successModal(failed.length?'Deletion finished with errors':'Students deleted',`${deleted} of ${ids.length} students removed.`,failed.join('\n'),'View students',()=>manageRoster(classId));
-      };
-    };
+      <div class="student-list">${students.map((s,i) => `<div><small>${i+1}</small><div><strong>${esc(s.full_name)}</strong><small>${esc(s.gender)}${s.lrn ? ' · LRN '+esc(s.lrn) : ''}</small></div><div class="row-actions"><button class="mini-action" data-edit-student="${s.id}">Edit</button><button class="mini-action danger-action" data-remove-student="${s.id}">Delete</button></div></div>`).join('') || emptyMini('No students yet','Add names above to start your roster.')}</div>`);
     $('#addRosterForm').onsubmit = async ev => {
       ev.preventDefault(); const f = new FormData(ev.target);
-      try { await Store.addStudents(classId, [{full_name:String(f.get('name')).trim(), gender:f.get('gender'), lrn:String(f.get('lrn')).trim()}]); await refresh(); successModal('Student added','The student is saved in your class.', '', 'View students',()=>manageRoster(classId)); }
+      try { await Store.addStudents(classId, [{full_name:String(f.get('name')).trim(), gender:f.get('gender'), lrn:String(f.get('lrn')).trim()}]); await refresh(); manageRoster(classId); toast('Student added'); }
       catch(e) { toast(Store.friendlyError(e),'warn'); }
     };
-    $('#gdSF1Import').onclick = async () => {
-      const file = $('#gdSF1Input').files?.[0];
-      if (!file) return toast('Choose an Excel or CSV file first.', 'warn');
-      const button = $('#gdSF1Import'); button.disabled = true;
+    // Two-stage import: reading an Excel file never writes student records.
+    // The teacher reviews the roster, then clicks Import to save it.
+    let sf1Preview = null;
+    const sf1File = $('#gdSF1Input');
+    const sf1Button = $('#gdSF1Import');
+    const sf1Info = $('#gdSF1Info');
+    const sf1Panel = $('#gdSF1Preview');
+    sf1File.onchange = async () => {
+      sf1Preview = null;
+      sf1Button.disabled = true;
+      sf1Button.textContent = 'Import students';
+      sf1Panel.hidden = true;
+      sf1Panel.innerHTML = '';
+      const file=sf1File.files?.[0];
+      if(!file){sf1Info.textContent='Select an Excel file to preview students.';return;}
+      sf1Info.textContent = `Reading ${file.name}…`;
       try {
         const parsed = await window.GradeDockRosterImport.read(file, students);
-        const imported = parsed.students;
-        if (!imported.length) throw new Error('No new student names found. Check for duplicates and a Name or Last Name / First Name header. Gender and LRN are optional. If this is your SF1, send a copy so its exact layout can be checked.');
-        const males=imported.filter(x=>x.gender==='Male').length, females=imported.filter(x=>x.gender==='Female').length, unspecified=imported.filter(x=>x.gender==='Unspecified').length;
-        modal(`<h3>Review ${imported.length} students</h3><p>Check the complete names before importing. Male: ${males} · Female: ${females} · Unspecified: ${unspecified}. Skipped/duplicates: ${parsed.skipped}.</p><div class="gd-import-preview"><table><thead><tr><th>Name</th><th>Gender</th><th>LRN</th></tr></thead><tbody>${imported.map(x=>`<tr><td>${esc(x.full_name)}</td><td>${esc(x.gender)}</td><td>${esc(x.lrn)}</td></tr>`).join('')}</tbody></table></div><p id="importProgress" role="status"></p><div class="modal-actions"><button class="btn btn-soft" id="cancelImport">Back</button><button class="btn btn-primary" id="confirmImport">Import students</button></div>`);
-        $('#cancelImport').onclick=()=>manageRoster(classId);
-        $('#confirmImport').onclick=async()=>{
-          let saved=0;
-          try{
-            for(let i=0;i<imported.length;i+=40){$('#importProgress').textContent=`Importing ${saved} of ${imported.length}…`;await Store.addStudents(classId,imported.slice(i,i+40));saved+=imported.slice(i,i+40).length;}
-            await refresh();successModal('Import complete',`${saved} students added.`, '', 'View students',()=>manageRoster(classId));
-          }catch(e){
-            try{await refresh();}catch(_){}
-            successModal('Import stopped',`${saved} students were saved before the error. Choose the file again to retry; saved names will be skipped.`,Store.friendlyError(e),'Back to students',()=>manageRoster(classId));
-          }
-        };
-
-      } catch(e) { if($('#gdSF1Info')) $('#gdSF1Info').textContent='Import failed: '+(e.message||String(e));console.error('GradeDock student import:',e);toast(e.message||'Excel import failed','warn'); }
-      finally { button.disabled=false; }
+        const records=parsed.students;
+        if(!records.length) throw new Error('No new student records found. Check whether these students are already in the class or whether the file contains a valid LRN and Name column.');
+        const males=records.filter(x=>x.gender==='Male').length;
+        const females=records.filter(x=>x.gender==='Female').length;
+        const unspecified=records.filter(x=>x.gender==='Unspecified').length;
+        const summaries=[`${males} male`,`${females} female`];
+        if(unspecified)summaries.push(`${unspecified} unspecified`);
+        sf1Info.textContent = `${parsed.format}: ${records.length} students detected (${summaries.join(', ')}). ${parsed.duplicates||0} existing/duplicate skipped.`;
+        // Escape spreadsheet text before inserting it in the document.
+        sf1Panel.innerHTML = `<div class="gd-sf1-summary"><strong>${records.length} students ready to import</strong><small>Male ${males} · Female ${females}${unspecified?' · Unspecified '+unspecified:''}</small></div>
+          <div class="gd-sf1-preview-scroller"><table class="gd-sf1-table"><thead><tr><th>Name</th><th>Sex</th><th>LRN</th></tr></thead><tbody>${records.map(x=>`<tr><td>${esc(x.full_name)}</td><td>${esc(x.gender)}</td><td>${esc(x.lrn||'—')}</td></tr>`).join('')}</tbody></table></div>
+          <small class="gd-sf1-review-note">Review before importing. These names have not yet been saved to GradeDock.</small>`;
+        sf1Panel.hidden = false;
+        sf1Preview = parsed;
+        sf1Button.textContent = `Add ${records.length} students to ${cls?.section||'class'}`;
+        sf1Button.disabled = false;
+      } catch(e){
+        sf1Info.textContent='Could not read this roster: '+(e.message||String(e));
+        console.error('GradeDock SF1 preview:',e);
+      }
+    };
+    sf1Button.onclick = async () => {
+      if(!sf1Preview?.students?.length)return;
+      const imported=sf1Preview.students;
+      sf1Button.disabled = true;
+      sf1File.disabled = true;
+      sf1Button.textContent = 'Importing…';
+      try {
+        for(let i=0;i<imported.length;i+=40){
+          await Store.addStudents(classId,imported.slice(i,i+40));
+          sf1Info.textContent=`Saving ${Math.min(i+40,imported.length)} of ${imported.length} students…`;
+        }
+        await refresh();
+        toast(`${imported.length} SF1 students added to ${cls?.section||'your class'}`);
+        manageRoster(classId);
+      } catch(e){
+        sf1Info.textContent='Import failed: '+Store.friendlyError(e)+'. If some students were added, reopen the roster to review before retrying.';
+        toast(Store.friendlyError(e),'warn');
+        sf1Button.disabled=false;
+        sf1Button.textContent = `Retry import`;
+      } finally {sf1File.disabled=false;}
     };
     $$('[data-edit-student]').forEach(b => b.onclick = () => {
       const s = students.find(x => x.id === b.dataset.editStudent);
       modal(`<div class="modal-head"><h3>Edit student</h3><button class="icon-btn" data-close-modal>✕</button></div><form id="editStudentForm" class="form-stack"><label>Name<input name="full_name" required value="${esc(s.full_name)}"></label><label>Gender<select name="gender"><option value="Male" ${s.gender==='Male'?'selected':''}>Male</option><option value="Female" ${s.gender==='Female'?'selected':''}>Female</option><option value="Unspecified" ${s.gender==='Unspecified'?'selected':''}>Unspecified</option></select></label><label>LRN (optional)<input name="lrn" value="${esc(s.lrn || '')}"></label><div class="modal-actions"><button type="button" class="btn btn-soft" data-close-modal>Cancel</button><button class="btn btn-primary">Save</button></div></form>`);
-      $('#editStudentForm').onsubmit = async ev => {ev.preventDefault();const f=new FormData(ev.target);try {await Store.editStudent(s.id,{full_name:String(f.get('full_name')).trim(),gender:f.get('gender'),lrn:String(f.get('lrn')).trim()||null});await refresh();successModal('Student updated','Changes saved.', '', 'View students',()=>manageRoster(classId));}catch(e){toast(Store.friendlyError(e),'warn');}};
+      $('#editStudentForm').onsubmit = async ev => {ev.preventDefault();const f=new FormData(ev.target);try {await Store.editStudent(s.id,{full_name:String(f.get('full_name')).trim(),gender:f.get('gender'),lrn:String(f.get('lrn')).trim()||null});await refresh();manageRoster(classId);toast('Student updated');}catch(e){toast(Store.friendlyError(e),'warn');}};
     });
     $$('[data-remove-student]').forEach(b => b.onclick = () => {
       const id = b.dataset.removeStudent;
       modal(`<div class="gd-dialog"><h3>Delete student?</h3><p>This removes the student from the roster. Previously saved scan results remain unchanged.</p><div class="modal-actions"><button class="btn btn-soft" data-close-modal>Cancel</button><button class="btn btn-primary" id="confirmRemoveStudent">Delete student</button></div></div>`);
-      $('#confirmRemoveStudent').onclick = async () => {try {await Store.deleteStudent(id);await refresh();successModal('Student deleted','The student was removed from the roster.', '', 'View students',()=>manageRoster(classId));}catch(e){toast(Store.friendlyError(e),'warn');}};
+      $('#confirmRemoveStudent').onclick = async () => {try {await Store.deleteStudent(id);await refresh();manageRoster(classId);toast('Student removed');}catch(e){toast(Store.friendlyError(e),'warn');}};
     });
   }
 
@@ -722,19 +718,17 @@
     };
   }
 
-  async function downloadSheetPdf(id) {
+  function downloadSheetPdf(id) {
     const exam = state.exams.find(x => x.id === id);
     if (!exam) return;
-    await new Promise(resolve=>setTimeout(resolve,0));
-    await window.GradeDockSheet.downloadPdf(exam, state.user?.full_name || 'Teacher');
+    window.GradeDockSheet.downloadPdf(exam, state.user?.full_name || 'Teacher');
     toast('Answer sheet PDF downloaded');
   }
 
-  async function downloadSheetPng(id) {
+  function downloadSheetPng(id) {
     const exam = state.exams.find(x => x.id === id);
     if (!exam) return;
-    await new Promise(resolve=>setTimeout(resolve,0));
-    await window.GradeDockSheet.downloadPng(exam, state.user?.full_name || 'Teacher');
+    window.GradeDockSheet.downloadPng(exam, state.user?.full_name || 'Teacher');
     toast('Answer sheet PNG downloaded');
   }
 
@@ -797,7 +791,7 @@
         await Store.replaceExamKey(exam.id, key);
         closeModal();
         await refresh();
-        successModal('Answer key saved','Your manual answer key is ready.');
+        toast('Manual answer key saved');
       } catch (err) {
         toast(Store.friendlyError ? Store.friendlyError(err) : err.message, 'warn');
       }
@@ -824,13 +818,35 @@
         await Store.replaceExamKey(exam.id, imported.answers);
         closeModal();
         await refresh();
-        successModal('Answer key saved',`${imported.questionCount} items imported from Excel.`);
+        toast(`Answer key saved: ${imported.questionCount} items detected from Excel`);
       } catch (err) { toast(Store.friendlyError ? Store.friendlyError(err) : err.message, 'warn'); }
       e.target.value = '';
     };
   }
 
-  function confirmDeleteExam(id) { bulkAction('exams',[id],'delete'); }
+  function confirmDeleteExam(id) {
+    const exam = state.exams.find(x => x.id === id);
+    if (!exam) return;
+    const resultCount = state.results.filter(r => r.exam_id === id).length;
+    modal(`
+      <div class="modal-head"><div><span class="kicker danger-text">DELETE EXAM</span><h3>${esc(exam.title)}</h3><p>This permanently deletes the exam, its answer key, and ${resultCount} saved result${resultCount === 1 ? '' : 's'} linked to it.</p></div><button class="icon-btn" data-close-modal>✕</button></div>
+      <div class="delete-warning">This action cannot be undone.</div>
+      <div class="modal-actions"><button type="button" class="btn btn-soft" data-close-modal>Cancel</button><button type="button" id="confirmDeleteExamBtn" class="btn btn-danger">Delete exam</button></div>`);
+    $('#confirmDeleteExamBtn').onclick = async () => {
+      const btn = $('#confirmDeleteExamBtn');
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+      processModal('Deleting exam…', `Removing ${exam.title} and its linked records.`, '×');
+      try {
+        await Store.deleteExam(id);
+        await refresh();
+        successModal('Exam deleted', `${exam.title} was removed from GradeDock.`);
+      } catch (err) {
+        closeModal();
+        toast(Store.friendlyError ? Store.friendlyError(err) : err.message, 'warn');
+      }
+    };
+  }
 
   function populateScanSelectors() {
     const classSelect = $('#scanClass');
@@ -1700,7 +1716,7 @@
       e.preventDefault();
       await Store.updateProfile({ full_name: $('#profileName').value.trim(), school_name: $('#profileSchool').value.trim() });
       await refresh();
-      successModal('Profile updated','Your changes were saved.');
+      toast('Profile updated');
     };
     $('#storeScansToggle').onchange = e => localStorage.setItem('gradedock_store_scans', e.target.checked ? '1' : '0');
   }
