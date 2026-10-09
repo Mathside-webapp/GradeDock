@@ -1,0 +1,1 @@
+Connected to GradeDock Supabase project kgdxnmbmyyimikjftvnn. The GradeDock project currently has no public tables or storage buckets. Run 01_COMPLETE_SUPABASE_SETUP.sql in that project SQL Editor before using website. ClassCheck is separate and unchanged.
