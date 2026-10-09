@@ -1,6 +1,4 @@
-GradeDock student import update
-- Reads .xls, .xlsx and .csv using the same SheetJS reader as Mathside.
-- Choose Classes > Students > Import SF1, select your file, then Import students.
-- If SF1 does not include a gender value per row, use the gender fallback.
-- Import only writes roster records, not scans. Scanner code unchanged.
-- Requires the CDN Excel reader to load while online.
+GradeDock Excel and SF1 import (automatic gender detection)
+
+Use a DepEd SF1 (.xls/.xlsx) with Male/Female headings or columns. Gender is detected from section headings, sheet titles, or Gender/Sex column. Standard rosters without gender data import as Unspecified; the system does not guess gender from names.
+No manual gender dropdown is required when importing.
