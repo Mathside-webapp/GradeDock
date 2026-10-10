@@ -545,3 +545,11 @@
 .gd-action-pill.insufficient-data{background:#edf1f7;color:#475569}
 .analysis-table-wrap{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
 .analysis-table{min-width:1120px}.analysis-table th,.analysis-table td{white-space:normal}
+
+
+/* GradeDock v3.26 - custom icon logo */
+.brand-logo-icon{width:42px;height:42px;display:block;object-fit:contain;border-radius:14px;box-shadow:0 6px 16px rgba(37,99,235,.14)}
+.brand-lockup .brand-logo-icon{width:44px;height:44px}
+.sidebar-logo-icon{width:34px;height:34px;border-radius:12px}
+.sidebar-brand{gap:10px}
+@media(max-width:760px){.brand-lockup .brand-logo-icon{width:40px;height:40px}.sidebar-logo-icon{width:32px;height:32px}}
