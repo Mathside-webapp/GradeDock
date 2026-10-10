@@ -1,0 +1,25 @@
+/* GradeDock PWA: blue/white install experience, independent of scanner CSS. */
+.gd-install-btn{margin-top:12px;display:flex;justify-content:center;gap:10px;align-items:center;border:1px solid #bfdbfe!important;background:#eff6ff!important;color:#1d4ed8!important;min-height:46px}
+.gd-install-btn:hover{background:#dbeafe!important;border-color:#93c5fd!important}
+.gd-install-btn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.gd-install-description{color:#64748b;text-align:center;font-size:11px;line-height:1.45;margin:7px 0 4px}
+.gd-install-side{color:#2563eb!important;font-weight:800}
+.gd-pwa-settings{padding:18px 22px 24px;display:grid;gap:13px}
+.gd-pwa-settings p{font-size:13px;color:#334155;margin:0}
+.gd-pwa-settings .btn{justify-self:start}
+.gd-pwa-settings small{color:#64748b;line-height:1.6}
+.gd-offline-banner{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:999999;width:max-content;max-width:calc(100vw - 28px);padding:12px 17px;border-radius:12px;background:#172033;color:white;box-shadow:0 12px 35px #17203335;text-align:center;font:600 13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+.gd-offline-banner[hidden],.gd-install-btn[hidden],.gd-install-side[hidden],#gdInstallSettingsBtn[hidden]{display:none!important}
+.gd-pwa-dialog{border:1px solid #dbe5f4;padding:0;border-radius:21px;width:min(430px,calc(100vw - 32px));box-shadow:0 32px 85px #1720334d;color:#172033;max-height:min(90vh,720px);overflow:auto}
+.gd-pwa-dialog::backdrop{background:#0f172a75;backdrop-filter:blur(3px)}
+.gd-pwa-modal-content{padding:28px;display:grid;gap:14px}
+.gd-pwa-modal-icon{width:50px;height:50px;border-radius:14px;display:grid;place-items:center;background:#eff6ff;color:#2563eb;font-size:26px;font-weight:900}
+.gd-pwa-overline{font-size:10px;letter-spacing:.12em;color:#2563eb;font-weight:850}
+.gd-pwa-modal-content h2{margin:0;font-size:24px;line-height:1.2}
+.gd-pwa-modal-content p{margin:0;color:#64748b;font-size:13px;line-height:1.6}
+.gd-pwa-steps{list-style:decimal;padding:8px 8px 8px 27px;margin:0;display:grid;gap:13px;color:#334155;font-size:13px;line-height:1.55}
+.gd-pwa-steps li{padding-left:4px}
+.gd-pwa-steps li::marker{font-weight:900;color:#2563eb}
+.gd-pwa-modal-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:4px}
+.gd-pwa-modal-actions .btn{white-space:nowrap;min-width:98px}
+@media(max-width:540px){.gd-pwa-modal-content{padding:24px 20px}.gd-pwa-modal-actions .btn{flex:1 1 auto}.gd-install-description{font-size:10px}}

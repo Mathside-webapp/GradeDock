@@ -4,9 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#2563eb" />
+  <meta name="application-name" content="GradeDock" />
+  <meta name="description" content="Scan answer sheets, manage classes and exams, and review results with GradeDock." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="GradeDock" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <title>GradeDock — Scan. Grade. Understand.</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="css/styles.css?v=3.24" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="css/styles.css?v=3.25" />
+  <link rel="stylesheet" href="css/pwa.css?v=1" />
 </head>
 <body>
   <div id="toastHost" class="toast-host"></div>
@@ -44,6 +53,11 @@
         </form>
         <div class="auth-divider"><span>or preview first</span></div>
         <button id="demoBtn" class="btn btn-soft btn-block">Try demo mode</button>
+        <button id="gdInstallAuthBtn" class="btn btn-soft btn-block gd-install-btn" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v3h16v-3"/></svg>
+          <span>Install GradeDock app</span>
+        </button>
+        <p class="gd-install-description">Install on your phone or computer, just like Mathside.</p>
         <p class="auth-note">Demo data stays in this browser. Connect Supabase later using <code>js/config.js</code>.</p>
       </div>
     </div>
@@ -62,6 +76,7 @@
         <button class="nav-item" data-page="archives"><span>▣</span>Archives</button>
       </nav>
       <div class="sidebar-bottom">
+        <button id="gdInstallSideBtn" class="nav-item gd-install-side" type="button"><span aria-hidden="true">↓</span>Install app</button>
         <button class="nav-item" data-page="settings"><span>⚙</span>Settings</button>
         <div class="user-chip"><div id="userAvatar" class="avatar">T</div><div><strong id="userName">Teacher</strong><small id="userEmail">demo@gradedock.local</small></div><button id="signoutBtn" title="Sign out">↪</button></div>
       </div>
@@ -148,6 +163,7 @@
         <div class="settings-grid">
           <section class="panel"><div class="panel-head"><div><h3>Profile</h3><p>Your teacher workspace identity.</p></div></div><form id="profileForm" class="form-stack"><label>Full name<input id="profileName" /></label><label>School<input id="profileSchool" placeholder="School name" /></label><button class="btn btn-primary" type="submit">Save profile</button></form></section>
           <section class="panel"><div class="panel-head"><div><h3>Scanning</h3><p>Control how scan images are handled.</p></div></div><label class="toggle-row"><div><strong>Store scanned images</strong><small>Upload captured images to your private Supabase Storage bucket.</small></div><input id="storeScansToggle" type="checkbox" /></label><div class="info-box">Bubble recognition runs in the browser. Images do not need to leave the device unless this setting is enabled.</div></section>
+          <section class="panel"><div class="panel-head"><div><h3>GradeDock App</h3><p>Open GradeDock directly from your Home Screen or desktop.</p></div></div><div class="gd-pwa-settings"><p id="gdPwaStatus">Checking install status…</p><button id="gdInstallSettingsBtn" class="btn btn-primary" type="button">Install GradeDock</button><small>Camera access requires HTTPS or localhost. Saving records to Supabase requires an internet connection.</small></div></section>
           <section class="panel"><div class="panel-head"><div><h3>Connection</h3><p>Backend status for this installation.</p></div></div><div id="connectionCard"></div></section>
         </div>
       </section>
@@ -155,6 +171,32 @@
   </div>
 
   <div id="modalHost"></div>
+  <div id="gdOfflineBanner" class="gd-offline-banner" role="status" aria-live="polite" hidden>You are offline. Saving results and accessing Supabase require internet.</div>
+  <dialog id="gdPwaGuide" class="gd-pwa-dialog" aria-labelledby="gdPwaGuideTitle">
+    <div class="gd-pwa-modal-content">
+      <div class="gd-pwa-modal-icon" aria-hidden="true">↓</div>
+      <span class="gd-pwa-overline">GRADEDOCK APP</span>
+      <h2 id="gdPwaGuideTitle">Install GradeDock</h2>
+      <p id="gdPwaGuideIntro"></p>
+      <ol id="gdPwaGuideSteps" class="gd-pwa-steps"></ol>
+      <div class="gd-pwa-modal-actions">
+        <button id="gdPwaCopyLinkBtn" class="btn btn-soft" type="button" hidden>Copy website link</button>
+        <button id="gdPwaGuideCloseBtn" class="btn btn-primary" type="button">Got it</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="gdPwaUpdate" class="gd-pwa-dialog" aria-labelledby="gdPwaUpdateTitle">
+    <div class="gd-pwa-modal-content">
+      <div class="gd-pwa-modal-icon" aria-hidden="true">↻</div>
+      <span class="gd-pwa-overline">GRADEDOCK UPDATE</span>
+      <h2 id="gdPwaUpdateTitle">Update ready</h2>
+      <p>A new version of GradeDock is ready. Update after you finish scanning or saving any current work.</p>
+      <div class="gd-pwa-modal-actions">
+        <button id="gdPwaUpdateLaterBtn" class="btn btn-soft" type="button">Later</button>
+        <button id="gdPwaUpdateNowBtn" class="btn btn-primary" type="button">Update now</button>
+      </div>
+    </div>
+  </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.95.0/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -166,7 +208,9 @@
   <script src="js/scanner.js?v=3.18"></script>
   <script src="js/store.js?v=3.20"></script>
   <script src="js/roster-import.js?v=4"></script>
-  <script src="js/app.js?v=3.24"></script>
+  <script src="js/item-analysis.js?v=1"></script>
+  <script src="js/app.js?v=3.25"></script>
   <script src="js/ui-extras.js?v=2"></script>
+  <script src="js/pwa.js?v=1"></script>
 </body>
 </html>

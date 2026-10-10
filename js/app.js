@@ -1136,19 +1136,7 @@
     } catch (err) { closeModal(); toast(err.message, 'warn'); }
   }
 
-  function itemDifficultyLabel(percent) {
-    if (percent >= 70) return 'Easy';
-    if (percent >= 40) return 'Moderate';
-    return 'Difficult';
-  }
-
-  function discriminationLabel(value) {
-    if (value == null) return 'Not enough data';
-    if (value >= .40) return 'Very good';
-    if (value >= .30) return 'Good';
-    if (value >= .20) return 'Fair';
-    return 'Needs review';
-  }
+  const Analysis = window.GradeDockItemAnalysis;
 
   async function buildItemAnalysisReport() {
     const examId = $('#itemAnalysisExam')?.value || '';
@@ -1171,8 +1159,8 @@
     const choiceCount = Number(exam.choice_count || 4);
     const choices = Array.from({ length: choiceCount }, (_, i) => String.fromCharCode(65 + i));
     const questionCount = Number(exam.question_count || key.length || 0);
-    const sorted = [...usable].sort((a, b) => Number(b.result.score || 0) - Number(a.result.score || 0));
-    const groupSize = sorted.length >= 4 ? Math.max(1, Math.floor(sorted.length * .27)) : 0;
+    const sorted = [...usable].sort((a, b) => Number(b.result.score || 0) - Number(a.result.score || 0) || String(a.result.student_name || '').localeCompare(String(b.result.student_name || '')) || String(a.result.id || '').localeCompare(String(b.result.id || '')));
+    const groupSize = Analysis.groupSize(sorted.length);
     const upper = groupSize ? sorted.slice(0, groupSize) : [];
     const lower = groupSize ? sorted.slice(-groupSize) : [];
 
@@ -1186,17 +1174,13 @@
       const incorrect = Math.max(0, n - correct - blank);
       const percentCorrect = n ? Math.round(correct / n * 10000) / 100 : 0;
       const distribution = Object.fromEntries(choices.map(choice => [choice, answerRows.filter(a => a.student_answer === choice).length]));
-      let discrimination = null;
-      if (groupSize) {
-        const upperCorrect = upper.filter(entry => Boolean(answerAt(entry, item)?.is_correct)).length;
-        const lowerCorrect = lower.filter(entry => Boolean(answerAt(entry, item)?.is_correct)).length;
-        discrimination = Math.round(((upperCorrect - lowerCorrect) / groupSize) * 100) / 100;
-      }
+      const upperCorrect = upper.filter(entry => Boolean(answerAt(entry, item)?.is_correct)).length;
+      const lowerCorrect = lower.filter(entry => Boolean(answerAt(entry, item)?.is_correct)).length;
+      const metrics = Analysis.metrics(upperCorrect, lowerCorrect, groupSize);
       const correctAnswer = key[idx] || answerRows.find(Boolean)?.correct_answer || '';
       return {
         item, correctAnswer, examinees: n, correct, incorrect, blank, percentCorrect,
-        difficulty: itemDifficultyLabel(percentCorrect), discrimination,
-        discriminationInterpretation: discriminationLabel(discrimination), distribution
+        upperCorrect, lowerCorrect, ...metrics, distribution
       };
     });
 
@@ -1216,6 +1200,10 @@
       classInfo,
       sectionLabel: classInfo ? `Grade ${classInfo.grade_level || '—'} • ${classLabel(classInfo)}` : 'All sections',
       examinees: usable.length,
+      groupSize,
+      upperGroup: upper.map(x => x.result),
+      lowerGroup: lower.map(x => x.result),
+      actionCounts: {RETAIN:rows.filter(x=>x.action==='RETAIN').length,REVISE:rows.filter(x=>x.action==='REVISE').length,REMOVE:rows.filter(x=>x.action==='REMOVE').length},
       meanScore: Math.round(meanScore * 100) / 100,
       mps: Math.round(mps * 100) / 100,
       mpl,
@@ -1241,25 +1229,28 @@
     if (button) { button.disabled = true; button.textContent = 'Building preview…'; }
     try {
       const report = await buildItemAnalysisReport();
-      const distractorHeaders = report.choices.map(c => `<th>${c}</th>`).join('');
       const rows = report.rows.map(row => `<tr class="${itemAnalysisRowClass(row)}">
-        <td><b>${row.item}</b></td><td><span class="answer-key-pill">${esc(row.correctAnswer || '—')}</span></td>
-        <td>${row.correct}</td><td>${row.incorrect}</td><td>${row.blank}</td><td><b>${row.percentCorrect}%</b></td>
-        <td><span class="difficulty-pill ${row.difficulty.toLowerCase()}">${row.difficulty}</span></td>
+        <td><b>${row.item}</b></td><td>${esc(row.correctAnswer || '—')}</td>
+        <td>${row.upperCorrect}</td><td>${row.du == null ? '—' : row.du.toFixed(2)}</td>
+        <td>${row.lowerCorrect}</td><td>${row.dl == null ? '—' : row.dl.toFixed(2)}</td>
+        <td><b>${row.difficultyIndex == null ? '—' : row.difficultyIndex.toFixed(2)}</b></td>
+        <td><span class="difficulty-pill ${row.difficulty === 'Moderately Difficult' ? 'moderate' : row.difficulty.toLowerCase().replace(/\s/g,'-')}">${esc(row.difficulty)}</span></td>
         <td>${row.discrimination == null ? '—' : row.discrimination.toFixed(2)}</td><td>${esc(row.discriminationInterpretation)}</td>
-        ${report.choices.map(c => `<td>${row.distribution[c] || 0}</td>`).join('')}
+        <td><span class="gd-action-pill ${row.action.toLowerCase().replace(/\s/g,'-')}">${esc(row.action)}</span></td>
+        <td>${row.percentCorrect.toFixed(2)}%</td>
       </tr>`).join('');
       modal(`
         <div class="modal-head"><div><span class="kicker">ITEM ANALYSIS PREVIEW</span><h3>${esc(report.exam.title)}</h3><p>${esc(report.sectionLabel)} • ${report.examinees} analyzed result${report.examinees === 1 ? '' : 's'}</p></div><button class="icon-btn" data-close-modal>✕</button></div>
         <div class="analysis-summary-grid">
           <div><small>EXAMINEES</small><strong>${report.examinees}</strong></div>
+          <div><small>UPPER / LOWER 25%</small><strong>${report.groupSize} each</strong></div>
           <div><small>MPS</small><strong>${report.mps}%</strong></div>
-          <div><small>MPL (60%)</small><strong>${report.mpl}/${Number(report.exam.question_count || report.rows.length || 0)}</strong></div>
-          <div><small>MOST DIFFICULT</small><strong>${report.mostDifficult ? `Item ${report.mostDifficult.item}` : '—'}</strong></div>
-          <div><small>EASIEST</small><strong>${report.easiest ? `Item ${report.easiest.item}` : '—'}</strong></div>
+          <div><small>RETAIN</small><strong>${report.actionCounts.RETAIN}</strong></div>
+          <div><small>REVISE</small><strong>${report.actionCounts.REVISE}</strong></div>
+          <div><small>REMOVE</small><strong>${report.actionCounts.REMOVE}</strong></div>
         </div>
-        <div class="analysis-guide"><b>Reading the preview:</b> % Correct is the item facility/difficulty measure. Difficulty colors use Easy ≥70%, Moderate 40–69%, Difficult &lt;40%. Discrimination compares the upper and lower 27% groups when at least four results are available.</div>
-        <div class="analysis-table-wrap"><table class="analysis-table"><thead><tr><th>Item</th><th>Key</th><th>Correct</th><th>Wrong</th><th>Blank</th><th>% Correct</th><th>Difficulty</th><th>Disc.</th><th>Interpretation</th>${distractorHeaders}</tr></thead><tbody>${rows}</tbody></table></div>
+        <div class="analysis-guide"><b>MA Math Ed 215 method:</b> Rank students by total score and take the upper and lower 25% (whole number of students per group). DU = upper correct ÷ upper group, DL = lower correct ÷ lower group, difficulty index = (upper correct + lower correct) ÷ (2 × group size), and discrimination index = DU − DL. Indices are shown to two decimal places. Difficulty: Difficult 0.00–0.40, Moderately Difficult 0.41–0.60, Easy 0.61–1.00. Discrimination: Not Discriminating ≤0.19, Moderately Discriminating 0.20–0.29, Discriminating ≥0.30. Recommendations follow the PPT's conditions. <b>All % Correct</b> separately uses every saved answer. ${!report.groupSize ? '<b>At least four complete scans are required for upper/lower group analysis.</b>' : ''}</div>
+        <div class="analysis-table-wrap"><table class="analysis-table"><thead><tr><th>Item</th><th>Key</th><th>Upper Correct</th><th>DU</th><th>Lower Correct</th><th>DL</th><th>Difficulty Index</th><th>Difficulty</th><th>Discrimination Index</th><th>Discrimination</th><th>Action</th><th>All % Correct</th></tr></thead><tbody>${rows}</tbody></table></div>
         <div class="modal-actions analysis-actions"><button type="button" class="btn btn-soft" data-close-modal>Close</button><button type="button" id="downloadItemAnalysisExcelBtn" class="btn btn-primary">⇩ Download Excel</button></div>`);
       $('#downloadItemAnalysisExcelBtn').onclick = async () => {
         const btn = $('#downloadItemAnalysisExcelBtn');
@@ -1280,96 +1271,120 @@
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'GradeDock';
     workbook.created = new Date();
+    workbook.calcProperties.fullCalcOnLoad = true;
+    const NAVY='FF172B4D', BLUE='FF2563EB', LIGHT='FFEFF6FF', BORDER='FFD6DEE9', WHITE='FFFFFFFF';
+    const border = {top:{style:'thin',color:{argb:BORDER}},bottom:{style:'thin',color:{argb:BORDER}},left:{style:'thin',color:{argb:BORDER}},right:{style:'thin',color:{argb:BORDER}}};
+    const titleBar = (ws, lastColumn, title, subtitle) => {
+      ws.mergeCells(1,1,1,lastColumn);
+      const cell=ws.getCell(1,1);cell.value=title;cell.font={bold:true,size:17,color:{argb:WHITE}};
+      cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:NAVY}};
+      cell.alignment={vertical:'middle',horizontal:'center'};ws.getRow(1).height=34;
+      ws.mergeCells(2,1,2,lastColumn);const c=ws.getCell(2,1);c.value=subtitle;c.font={color:{argb:'FF475569'},italic:true};c.alignment={horizontal:'center'};ws.getRow(2).height=24;
+    };
+    const styleHeader = row => {row.height=34;row.eachCell(c=>{c.font={bold:true,color:{argb:WHITE}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:BLUE}};c.alignment={horizontal:'center',vertical:'middle',wrapText:true};c.border=border;});};
+    const styleBody = (row,i) => {row.height=24;row.eachCell({includeEmpty:true},c=>{c.border=border;c.alignment={vertical:'middle',horizontal:'center',wrapText:true};if(i%2)c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF8FAFC'}};});};
 
-    const summary = workbook.addWorksheet('Summary', { views: [{ state: 'frozen', ySplit: 5 }] });
-    summary.columns = [{ width: 24 }, { width: 28 }];
-    summary.mergeCells('A1:B1');
-    summary.getCell('A1').value = 'GradeDock Item Analysis';
-    summary.getCell('A1').font = { bold: true, size: 18, color: { argb: 'FFFFFFFF' } };
-    summary.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
-    summary.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' };
-    summary.getRow(1).height = 30;
-    [
-      ['Exam', report.exam.title],
-      ['Section', report.sectionLabel],
-      ['Analyzed Results', report.examinees],
-      ['Number of Test Items', Number(report.exam.question_count || report.rows.length || 0)],
-      ['Mean Score', report.meanScore],
-      ['MPS — Mean Percentage Score', report.mps / 100],
-      ['MPL — Minimum Proficiency Level (60%)', report.mpl],
-      ['Learners at / above MPL', report.learnersAtOrAboveMpl],
-      ['% of Learners at / above MPL', report.percentAtOrAboveMpl / 100],
-      ['Most Difficult Item', report.mostDifficult ? `Item ${report.mostDifficult.item} (${report.mostDifficult.percentCorrect}%)` : '—'],
-      ['Easiest Item', report.easiest ? `Item ${report.easiest.item} (${report.easiest.percentCorrect}%)` : '—'],
-      ['Generated', new Date()]
-    ].forEach((values, i) => {
-      const row = summary.getRow(i + 3); row.values = values;
-      row.getCell(1).font = { bold: true, color: { argb: 'FF334155' } };
-      row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
-      row.eachCell(cell => { cell.border = { top:{style:'thin',color:{argb:'FFD6DEE9'}}, left:{style:'thin',color:{argb:'FFD6DEE9'}}, bottom:{style:'thin',color:{argb:'FFD6DEE9'}}, right:{style:'thin',color:{argb:'FFD6DEE9'}} }; cell.alignment = { vertical:'middle', wrapText:true }; });
+    const summary=workbook.addWorksheet('Summary',{views:[{state:'frozen',ySplit:3}]});
+    summary.getColumn(1).width=38;summary.getColumn(2).width=33;
+    titleBar(summary,2,'GradeDock | MA Item Analysis',`${report.exam.title} • ${report.sectionLabel}`);
+    const items=[
+      ['Exam',report.exam.title],['Section',report.sectionLabel],
+      ['Analyzed Papers',report.examinees],['Upper 25% Group (count)',report.groupSize],
+      ['Lower 25% Group (count)',report.groupSize],['Number of Test Items',report.rows.length],
+      ['Mean Score',report.meanScore],['MPS — all papers',report.mps/100],
+      ['MPL — 60% of total items',report.mpl],['Learners at / above MPL',report.learnersAtOrAboveMpl],
+      ['% at / above MPL',report.percentAtOrAboveMpl/100],
+      ['Items to RETAIN',report.actionCounts.RETAIN],['Items to REVISE',report.actionCounts.REVISE],
+      ['Items to REMOVE',report.actionCounts.REMOVE],
+      ['Generated',new Date()]
+    ];
+    items.forEach((r,i)=>{const row=summary.getRow(i+4);row.values=r;row.height=23;styleBody(row,i);row.getCell(1).fill={type:'pattern',pattern:'solid',fgColor:{argb:LIGHT}};row.getCell(1).font={bold:true,color:{argb:NAVY}};row.getCell(2).alignment={vertical:'middle',horizontal:'left',wrapText:true};});
+    summary.getCell('B10').numFmt='0.00';summary.getCell('B11').numFmt='0.00%';summary.getCell('B14').numFmt='0.00%';summary.getCell('B18').numFmt='mmm d, yyyy h:mm AM/PM';
+
+    const ws=workbook.addWorksheet('Item Analysis',{views:[{state:'frozen',ySplit:7,xSplit:2}]});
+    const headers=['Item','Key','Upper Correct','DU','Lower Correct','DL','Difficulty Index (DI)','Difficulty','Discrimination Index (ID)','Discrimination','Action','All Correct','All Responses','All % Correct','Blank','Incorrect',...report.choices.map(x=>`${x} Count`)];
+    titleBar(ws,headers.length,'GradeDock | Item Analysis — Upper & Lower 25%',`${report.exam.title} • ${report.sectionLabel} • ${report.examinees} papers`);
+    ws.mergeCells(3,1,3,headers.length);
+    ws.getCell(3,1).value='Source: MA Math Ed 215, Item Analysis (slides 7–13). DU=upper correct / group; DL=lower correct / group; DI=(upper correct + lower correct)/(2×group size); ID=DU−DL.';
+    ws.getCell(3,1).font={size:10,italic:true,color:{argb:'FF475569'}};ws.getCell(3,1).alignment={wrapText:true,horizontal:'center'};ws.getRow(3).height=27;
+    ws.mergeCells('A4:C4');ws.getCell('A4').value='Upper/Lower group size (each):';ws.getCell('A4').font={bold:true,color:{argb:NAVY}};
+    ws.getCell('D4').value=report.groupSize;ws.getCell('D4').font={bold:true,color:{argb:'FF1D4ED8'}};ws.getCell('D4').fill={type:'pattern',pattern:'solid',fgColor:{argb:LIGHT}};ws.getCell('D4').alignment={horizontal:'center'};
+    ws.mergeCells(4,5,4,headers.length);ws.getCell(4,5).value='The full-sample % Correct is additional information; DI and ID use only the upper and lower 25% groups as on the sample PPT sheet.';ws.getCell(4,5).font={italic:true,size:10,color:{argb:'FF64748B'}};ws.getCell(4,5).alignment={wrapText:true,vertical:'middle'};ws.getRow(4).height=30;
+    ws.mergeCells(5,1,5,headers.length);ws.getCell(5,1).value='DI 0.00–0.40 Difficult | 0.41–0.60 Moderately Difficult | 0.61–1.00 Easy     •     ID ≤0.19 Not Discriminating | 0.20–0.29 Moderately Discriminating | ≥0.30 Discriminating';ws.getCell(5,1).alignment={wrapText:true,horizontal:'center'};ws.getCell(5,1).font={size:10,color:{argb:NAVY}};ws.getRow(5).height=30;
+    ws.mergeCells(6,1,6,headers.length);ws.getCell(6,1).value='Action: ID ≥0.30 → RETAIN; ID 0.20–0.29 → REVISE; ID ≤0.19 → REVISE if moderately difficult, otherwise REMOVE.';ws.getCell(6,1).alignment={wrapText:true,horizontal:'center'};ws.getCell(6,1).font={size:10,bold:true,color:{argb:'FF334155'}};ws.getRow(6).height=28;
+    const header=ws.getRow(7);header.values=headers;styleHeader(header);
+    report.rows.forEach((r,index)=>{
+      const ri=index+8;
+      const row=ws.getRow(ri);
+      row.values=[r.item,r.correctAnswer||'',r.upperCorrect,'',r.lowerCorrect,'','','','','','',r.correct,r.examinees,'',r.blank,r.incorrect,...report.choices.map(c=>r.distribution[c]||0)];
+      // Excel formulas permit teachers to inspect, correct, or recompute every index.
+      row.getCell(4).value={formula:`IF($D$4=0,"",ROUND(C${ri}/$D$4,2))`,result:r.du==null?'':r.du};
+      row.getCell(6).value={formula:`IF($D$4=0,"",ROUND(E${ri}/$D$4,2))`,result:r.dl==null?'':r.dl};
+      row.getCell(7).value={formula:`IF($D$4=0,"",ROUND((C${ri}+E${ri})/(2*$D$4),2))`,result:r.difficultyIndex==null?'':r.difficultyIndex};
+      row.getCell(8).value={formula:`IF(G${ri}="","Insufficient data",IF(G${ri}<=0.4,"Difficult",IF(G${ri}<=0.6,"Moderately Difficult","Easy")))`,result:r.difficulty};
+      row.getCell(9).value={formula:`IF(OR(D${ri}="",F${ri}=""),"",ROUND(D${ri}-F${ri},2))`,result:r.discrimination==null?'':r.discrimination};
+      row.getCell(10).value={formula:`IF(I${ri}="","Insufficient data",IF(I${ri}<0.2,"Not Discriminating",IF(I${ri}<0.3,"Moderately Discriminating","Discriminating")))`,result:r.discriminationInterpretation};
+      row.getCell(11).value={formula:`IF(OR(G${ri}="",I${ri}=""),"INSUFFICIENT DATA",IF(I${ri}>=0.3,"RETAIN",IF(AND(G${ri}>0.4,G${ri}<=0.6),"REVISE",IF(I${ri}>=0.2,"REVISE","REMOVE"))))`,result:r.action};
+      row.getCell(14).value={formula:`IF(M${ri}=0,"",ROUND(L${ri}/M${ri},4))`,result:r.examinees?r.correct/r.examinees:0};
+      styleBody(row,index);
+      [4,6,7,9].forEach(i=>row.getCell(i).numFmt='0.00');row.getCell(14).numFmt='0.00%';
+      row.getCell(2).font={bold:true,color:{argb:'FF1D4ED8'}};
+      const actionColor=r.action==='RETAIN'?'FFE8F7ED':r.action==='REMOVE'?'FFFFE8E8':'FFFFF5D6';
+      row.getCell(11).fill={type:'pattern',pattern:'solid',fgColor:{argb:actionColor}};
+      row.getCell(11).font={bold:true,color:{argb:r.action==='RETAIN'?'FF166534':r.action==='REMOVE'?'FF991B1B':'FF92400E'}};
+      if (typeof r.discrimination==='number' && r.discrimination<0) row.getCell(9).font={bold:true,color:{argb:'FF991B1B'}};
     });
-    summary.getCell('B7').numFmt = '0.00';
-    summary.getCell('B8').numFmt = '0.00%';
-    summary.getCell('B11').numFmt = '0.00%';
-    summary.getCell('B14').numFmt = 'mmm d, yyyy h:mm AM/PM';
-    summary.getCell('B8').fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFE8F7ED'} };
-    summary.getCell('B8').font = { bold:true, color:{argb:'FF166534'} };
-    summary.getCell('B9').fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFFF5D6'} };
-    summary.getCell('B9').font = { bold:true, color:{argb:'FF92400E'} };
-    summary.getCell('B11').fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEFF6FF'} };
-    summary.getCell('B11').font = { bold:true, color:{argb:'FF1D4ED8'} };
+    ws.autoFilter={from:{row:7,column:1},to:{row:7+report.rows.length,column:headers.length}};
+    [8,9,16,10,16,10,18,23,20,27,22,12,14,14,10,12,...report.choices.map(()=>11)].forEach((w,i)=>ws.getColumn(i+1).width=w);
+    ws.printOptions={horizontalCentered:true};ws.pageSetup={orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9};
+    ws.headerFooter.oddFooter='GradeDock | MA Math Ed 215 • Page &P / &N';
 
-    const ws = workbook.addWorksheet('Item Analysis', { views: [{ state: 'frozen', ySplit: 6 }] });
-    const headers = ['Item','Key','Correct','Incorrect','Blank','% Correct','Difficulty','Discrimination','Interpretation', ...report.choices.map(c => `${c} Count`)];
-    ws.mergeCells(1, 1, 1, headers.length);
-    const title = ws.getCell(1,1);
-    title.value = 'GradeDock Item Analysis';
-    title.font = { bold:true, size:18, color:{argb:'FFFFFFFF'} };
-    title.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1D4ED8'} };
-    title.alignment = { horizontal:'center', vertical:'middle' };
-    ws.getRow(1).height = 30;
-    ws.mergeCells(2,1,2,headers.length); ws.getCell(2,1).value = report.exam.title; ws.getCell(2,1).font = { bold:true, size:13, color:{argb:'FF172033'} }; ws.getCell(2,1).alignment={horizontal:'center'};
-    ws.mergeCells(3,1,3,headers.length); ws.getCell(3,1).value = `${report.sectionLabel} • ${report.examinees} analyzed results`; ws.getCell(3,1).font={color:{argb:'FF64748B'}}; ws.getCell(3,1).alignment={horizontal:'center'};
-    ws.mergeCells(4,1,4,headers.length); ws.getCell(4,1).value = 'Difficulty: Easy ≥70% • Moderate 40–69% • Difficult <40% | Discrimination uses upper/lower 27% groups when enough data are available.'; ws.getCell(4,1).font={italic:true,size:10,color:{argb:'FF64748B'}}; ws.getCell(4,1).alignment={horizontal:'center',wrapText:true};
+    const rules=workbook.addWorksheet('Interpretation Guide');
+    [28,24,27,26].forEach((w,i)=>rules.getColumn(i+1).width=w);
+    titleBar(rules,4,'MA Math Ed 215 | Formula & Decision Guide','Based on uploaded Item-Analysis.pdf, pages 7–13');
+    const info=[
+      ['Group selection','Rank students by test score','Upper 25% and lower 25%','Take equal whole-number groups, without overlap'],
+      ['DU','Upper correct ÷ group size','Round to 2 decimals','Displayed as in the PPT table'],
+      ['DL','Lower correct ÷ group size','Round to 2 decimals','Displayed as in the PPT table'],
+      ['Difficulty Index','(Upper Correct + Lower Correct) ÷ (2 × group size)','Round to 2 decimals','Uses counts; matches PPT sample page 13'],
+      ['Discrimination Index','DU − DL','Round to 2 decimals','Negative is Not Discriminating'],
+      ['Difficult','DI 0.00–0.40','',''],
+      ['Moderately Difficult','DI 0.41–0.60','',''],
+      ['Easy','DI 0.61–1.00','',''],
+      ['Not Discriminating','ID ≤0.19','',''],
+      ['Moderately Discriminating','ID 0.20–0.29','',''],
+      ['Discriminating','ID ≥0.30','',''],
+      ['DIFFICULT + Not Discriminating','','','REMOVE'],
+      ['DIFFICULT + Moderately Discriminating','','','REVISE'],
+      ['DIFFICULT + Discriminating','','','RETAIN'],
+      ['MODERATELY DIFFICULT + Not Discriminating','','','REVISE'],
+      ['MODERATELY DIFFICULT + Moderately Discriminating','','','REVISE'],
+      ['MODERATELY DIFFICULT + Discriminating','','','RETAIN'],
+      ['EASY + Not Discriminating','','','REMOVE'],
+      ['EASY + Moderately Discriminating','','','REVISE'],
+      ['EASY + Discriminating','','','RETAIN'],
+      ['Important distinction','Slide 7 gives the all-responses difficulty proportion.','Slide 13 calculates it from the selected upper/lower 25% groups.','GradeDock DI/ID follows the slide 13 Excel example.'],
+      ['Small data','If fewer than 4 saved papers have item-level answers, groups cannot be formed.','','The action displays INSUFFICIENT DATA.'],
+      ['Missing submissions','The report uses saved scans with per-question records.','','All % Correct uses recorded item responses.'],
+      ['Reference','MA Math Ed 215 — Item Analysis','R. R. Briones, PhD','Slides 7–13 (user-provided PDF)']
+    ];
+    const hr=rules.getRow(4);hr.values=['Term / Condition','Formula / Range','Meaning','Action / Note'];styleHeader(hr);
+    info.forEach((r,i)=>{const row=rules.getRow(i+5);row.values=r;row.height=(i>=20?38:27);row.eachCell({includeEmpty:true},c=>{c.border=border;c.alignment={vertical:'middle',wrapText:true};if(i%2)c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF8FAFC'}};});if(/^(DIFFICULT|MODERATELY DIFFICULT|EASY) \+/.test(String(r[0])))row.getCell(4).font={bold:true,color:{argb:r[3]==='RETAIN'?'FF166534':r[3]==='REMOVE'?'FF991B1B':'FF92400E'}};});
+    rules.views=[{state:'frozen',ySplit:4}];
 
-    const headerRow = ws.getRow(6); headerRow.values = headers;
-    headerRow.height = 30;
-    headerRow.eachCell(cell => {
-      cell.font = { bold:true, color:{argb:'FFFFFFFF'} };
-      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF2563EB'} };
-      cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
-      cell.border = { top:{style:'thin',color:{argb:'FFB7C5DA'}}, left:{style:'thin',color:{argb:'FFB7C5DA'}}, bottom:{style:'thin',color:{argb:'FFB7C5DA'}}, right:{style:'thin',color:{argb:'FFB7C5DA'}} };
-    });
-
-    report.rows.forEach(rowData => {
-      const values = [rowData.item, rowData.correctAnswer || '', rowData.correct, rowData.incorrect, rowData.blank, rowData.percentCorrect / 100, rowData.difficulty, rowData.discrimination == null ? '' : rowData.discrimination, rowData.discriminationInterpretation, ...report.choices.map(c => rowData.distribution[c] || 0)];
-      const row = ws.addRow(values);
-      row.eachCell(cell => {
-        cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
-        cell.border = { top:{style:'thin',color:{argb:'FFD6DEE9'}}, left:{style:'thin',color:{argb:'FFD6DEE9'}}, bottom:{style:'thin',color:{argb:'FFD6DEE9'}}, right:{style:'thin',color:{argb:'FFD6DEE9'}} };
-      });
-      row.getCell(6).numFmt = '0.00%';
-      if (typeof rowData.discrimination === 'number') row.getCell(8).numFmt = '0.00';
-      const fill = rowData.difficulty === 'Easy' ? 'FFE8F7ED' : rowData.difficulty === 'Difficult' ? 'FFFFE8E8' : 'FFFFF5D6';
-      row.getCell(7).fill = { type:'pattern', pattern:'solid', fgColor:{argb:fill} };
-      row.getCell(7).font = { bold:true, color:{argb: rowData.difficulty === 'Easy' ? 'FF166534' : rowData.difficulty === 'Difficult' ? 'FF991B1B' : 'FF92400E'} };
-      row.getCell(2).fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEFF6FF'} };
-      row.getCell(2).font = { bold:true, color:{argb:'FF1D4ED8'} };
-    });
-    ws.autoFilter = { from: { row:6, column:1 }, to: { row:6 + report.rows.length, column:headers.length } };
-    const widths = [8,8,11,11,9,12,14,15,18, ...report.choices.map(() => 10)];
-    widths.forEach((width, i) => { ws.getColumn(i + 1).width = width; });
-    ws.getColumn(9).width = 20;
-
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    const safeTitle = String(report.exam.title || 'exam').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-|-$/g, '') || 'exam';
-    link.download = `GradeDock-Item-Analysis-${safeTitle}.xlsx`;
-    document.body.appendChild(link); link.click(); link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1200);
+    const groups=workbook.addWorksheet('25% Group Audit',{views:[{state:'frozen',ySplit:4}]});
+    titleBar(groups,4,'Upper & Lower 25% Selection','Audit which saved papers were ranked into each group');
+    [16,31,14,18].forEach((w,i)=>groups.getColumn(i+1).width=w);
+    const gh=groups.getRow(4);gh.values=['Group','Student Name','Total Score','Items'];styleHeader(gh);
+    const g=[...report.upperGroup.map(x=>['Upper 25%',x.student_name||'',Number(x.score||0),Number(x.total_items||report.rows.length)]),...report.lowerGroup.map(x=>['Lower 25%',x.student_name||'',Number(x.score||0),Number(x.total_items||report.rows.length)])];
+    g.forEach((x,i)=>{const row=groups.addRow(x);styleBody(row,i);});
+    const buffer=await workbook.xlsx.writeBuffer();
+    const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');link.href=url;
+    const safeTitle=String(report.exam.title||'exam').replace(/[^a-z0-9_-]+/gi,'-').replace(/^-|-$/g,'')||'exam';
+    link.download=`GradeDock-Item-Analysis-MA-Method-${safeTitle}.xlsx`;
+    document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1200);
   }
 
   async function exportResultsExcel() {

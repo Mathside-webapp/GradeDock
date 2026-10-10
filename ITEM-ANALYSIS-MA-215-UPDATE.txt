@@ -1,0 +1,30 @@
+GradeDock MA Item Analysis Update (2026-10-10)
+
+The Item Analysis preview and XLSX export follow the MA Math Ed 215
+user-provided presentation: difficulty/discrimination thresholds and
+RETAIN / REVISE / REMOVE actions on slide 11; computation example on slide 13.
+
+Select the upper and lower 25% of saved, scored answer-sheet scans
+(floor(N / 4) in each group, sorted by total score).
+DU = ROUND(upper item-correct count / group size, 2)
+DL = ROUND(lower item-correct count / group size, 2)
+DI = ROUND((upper correct + lower correct) / (2 * group size), 2)
+ID = ROUND(DU - DL, 2)
+
+DI: 0.00-0.40 Difficult, 0.41-0.60 Moderately Difficult, >=0.61 Easy.
+ID: <=0.19 Not Discriminating, 0.20-0.29 Moderately Discriminating,
+    >=0.30 Discriminating. Negative ID is not discriminating.
+
+Action: ID >=0.30 RETAIN; ID 0.20-0.29 REVISE; ID <=0.19
+  => REVISE when DI is moderately difficult, otherwise REMOVE.
+
+NOTE: Slide 7 describes all-responses difficulty (correct / all responses),
+while the example on slide 13 uses the selected upper/lower 25%.
+The workbook follows the slide-13 method and reports full-sample
+correct percentage separately. Excel formulas are editable and recalculate.
+
+The scanner (js/scanner.js), students, authentication and Supabase
+configuration (js/config.js) have not been modified.
+
+All names in Group Audit come from your local GradeDock export, and are
+not uploaded to any external service by this workbook.

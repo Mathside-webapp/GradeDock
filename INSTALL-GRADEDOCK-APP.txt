@@ -1,0 +1,31 @@
+GRADEDOCK — INSTALLABLE WEB APP (PWA)
+=====================================
+
+This package converts GradeDock to an installable PWA, like Mathside.
+It is NOT an Android APK or a native iPhone App Store application.
+
+PUBLISH ON GITHUB PAGES
+1. Upload the CONTENTS of GradeDock-Website/ to the root of your GradeDock GitHub Pages repository.
+2. Keep index.html, manifest.webmanifest, service-worker.js, offline.html, icons/, css/, and js/ TOGETHER in that published folder.
+3. Wait for GitHub Pages to finish publishing and refresh the site via HTTPS.
+4. On Chrome/Edge Android or desktop, select Install GradeDock app.
+5. On iPhone Safari, tap Share > Add to Home Screen.
+
+CAMERA & DATA
+- Live camera requires HTTPS (GitHub Pages provides HTTPS) or localhost, and camera permission.
+- GradeDock still relies on online libraries from CDNs, and on Supabase for saved records.
+- The offline page is informational. Do NOT expect offline scanning, student imports, or offline grading sync.
+- GradeDock scanner.js, answer processing, roster import, UI core JavaScript and js/config.js were not modified.
+
+UPDATES
+- The PWA checks for new service worker versions when the website opens.
+- If an app update is ready, choose Update now AFTER finishing an unsaved scan.
+- To force a future PWA update, change CACHE_NAME in service-worker.js.
+
+TEST BEFORE DEPLOYING
+- Do not test by double-clicking index.html (file://).
+- Use HTTPS GitHub Pages, or http://localhost:8000 using python -m http.server 8000.
+- On desktop Chrome: DevTools > Application > Manifest and Service Workers.
+- On iOS: Safari Share > Add to Home Screen; Safari does not expose the same browser install prompt.
+
+NO NEW SUPABASE SQL OR EDGE FUNCTIONS ARE REQUIRED FOR PWA INSTALLATION.
