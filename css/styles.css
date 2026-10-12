@@ -547,9 +547,57 @@
 .analysis-table{min-width:1120px}.analysis-table th,.analysis-table td{white-space:normal}
 
 
-/* GradeDock v3.26 - custom icon logo */
-.brand-logo-icon{width:42px;height:42px;display:block;object-fit:contain;border-radius:14px;box-shadow:0 6px 16px rgba(37,99,235,.14)}
-.brand-lockup .brand-logo-icon{width:44px;height:44px}
-.sidebar-logo-icon{width:34px;height:34px;border-radius:12px}
-.sidebar-brand{gap:10px}
-@media(max-width:760px){.brand-lockup .brand-logo-icon{width:40px;height:40px}.sidebar-logo-icon{width:32px;height:32px}}
+/* GradeDock v3.26 — prevent promotional sample papers from covering labels.
+   The art participates in normal vertical layout instead of floating over copy. */
+.auth-brand-panel {
+  display:flex;
+  flex-direction:column;
+  padding:clamp(26px,3vw,42px) clamp(30px,5.4vw,82px);
+}
+.auth-brand-panel .auth-copy {
+  width:100%;
+  max-width:600px;
+  margin-top:clamp(30px,7.2vh,70px);
+}
+.auth-brand-panel .auth-copy h1 {
+  font-size:clamp(37px,4.45vw,62px);
+  line-height:1.05;
+  margin:12px 0 14px;
+}
+.auth-brand-panel .auth-copy p {
+  margin:0;
+  font-size:clamp(15px,1.35vw,17px);
+  line-height:1.55;
+}
+.auth-brand-panel .feature-pills { margin-top:20px; gap:8px; }
+.auth-brand-panel .feature-pills span { padding:8px 11px; font-size:12px; }
+.auth-brand-panel .auth-art {
+  position:relative;
+  inset:auto;
+  display:flex;
+  align-items:center;
+  gap:16px;
+  width:min(350px,100%);
+  height:166px;
+  flex:none;
+  margin:32px 0 8px auto;
+}
+.auth-brand-panel .auth-art .paper-card,
+.auth-brand-panel .auth-art .score-card {position:relative;inset:auto;flex:0 0 auto;}
+.auth-brand-panel .auth-art .paper-card {
+  width:168px;height:158px;padding:18px;transform:rotate(-4deg);
+}
+.auth-brand-panel .auth-art .score-card {
+  width:154px;min-height:128px;transform:rotate(3deg);
+}
+.brand-mark {overflow:hidden;background:#fff;border-radius:12px;}
+.brand-mark img {display:block;width:100%;height:100%;object-fit:cover;}
+@media(min-width:761px) and (max-width:1050px) {
+  .auth-brand-panel .auth-copy {margin-top:clamp(24px,5vh,50px);}
+  .auth-brand-panel .auth-copy h1 {font-size:clamp(35px,4.5vw,50px);}
+  .auth-brand-panel .auth-art {display:none;}
+}
+@media(max-width:760px) {
+  .auth-brand-panel {display:none;}
+  .auth-brand-panel .auth-art {display:none;}
+}

@@ -1,0 +1,10 @@
+GradeDock — 12 October 2026
+
+- Fixed paper/score preview cards on the desktop sign-in panel. They now have their own space below the feature chips instead of overlapping text, with responsive sizing.
+- Removed the demo button, demo-mode sample data, and demo-mode code paths. Normal sign-in, sign-up, and Supabase data flow remain.
+- Applied the latest GradeDock custom icon set (11 October) to the header, PWA, favicon, and desktop/sidebar branding.
+- Bumped CSS/JS/PWA cache versions so updates load after deployment.
+- Existing js/config.js was preserved exactly as in the source ZIP.
+- No additional SQL or Edge Functions are required for these changes.
+
+To deploy: replace the website files in your GitHub Pages repository, preserving the GradeDock-Website folder contents at the hosting root as needed. Then refresh the page/reopen the PWA to get the new cache.

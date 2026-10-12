@@ -116,7 +116,7 @@
     $('#userAvatar').textContent = (u.full_name || 'T')[0].toUpperCase();
     $('#welcomeTitle').textContent = `Good day, ${(u.full_name || 'Teacher').split(' ')[0]}.`;
     const modeBadge = $('#modeBadge');
-    if (modeBadge) modeBadge.textContent = Store.demo ? 'Demo mode' : 'Supabase connected';
+    if (modeBadge) modeBadge.textContent = 'Supabase connected';
     renderDashboard();
     renderClasses();
     renderExams();
@@ -432,9 +432,7 @@
     $('#profileName').value = state.user?.full_name || '';
     $('#profileSchool').value = state.user?.school_name || '';
     $('#storeScansToggle').checked = localStorage.getItem('gradedock_store_scans') === '1';
-    $('#connectionCard').innerHTML = Store.demo
-      ? `<div class="connection demo"><strong>Demo mode</strong><p>Data is stored only in this browser. To enable accounts and cloud storage, configure <code>js/config.js</code> and run the SQL setup.</p></div>`
-      : `<div class="connection live"><strong>Supabase connected</strong><p>Authentication and teacher-owned classes, exams, answer keys, and results are using your configured Supabase project.</p></div>`;
+    $('#connectionCard').innerHTML = `<div class="connection live"><strong>Supabase connected</strong><p>Authentication and teacher-owned classes, exams, answer keys, and results are using your configured Supabase project.</p></div>`;
   }
 
   function newClass() {
@@ -1541,7 +1539,6 @@
       $(`#${b.dataset.authTab}Form`).classList.add('active');
     });
 
-    $('#demoBtn').onclick = async () => { Store.useDemo(); await enterApp(); };
 
     $('#signinForm').onsubmit = async e => {
       e.preventDefault();
