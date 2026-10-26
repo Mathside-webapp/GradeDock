@@ -1,0 +1,52 @@
+GRADEDOCK - EXAM + ANSWER KEY / SUPABASE FIX (26 OCTOBER 2026)
+=================================================================
+
+WHAT WAS FOUND
+- The project contains a complete Supabase schema but the old error message
+  points to sql/01_RUN_THIS_FIRST.sql, which is an older v2-only setup.
+- GradeDock uses public.exams for exams and public.exam_keys for their keys.
+- Creating the exam and saving the key were separate API operations. When key
+  insertion failed, the exam was already saved but the old UI said only "failed".
+- An older README says the GradeDock project had no tables at the time that
+  note was produced. This chat has NOT accessed your current live database.
+
+START HERE: RUN SQL IN THE CORRECT DATABASE PROJECT
+1. Make a backup of your existing GradeDock Supabase data.
+2. Open Supabase Dashboard > YOUR GradeDock project > SQL Editor > New query.
+3. Open and run sql/00_CHECK_DATABASE.sql. Examine the table_status column.
+4. If ALL required tables are MISSING and this is a brand-new EMPTY GradeDock
+   project: run sql/01_COMPLETE_SUPABASE_SETUP.sql (NOT 01_RUN_THIS_FIRST.sql).
+   Do not run the fresh setup blindly in an existing live project.
+5. If public.exams EXISTS but public.exam_keys is MISSING, or it is present
+   but its INSERT/UPDATE policies are incorrect: run
+   sql/05_REPAIR_EXAM_KEYS_EXISTING.sql. It preserves your data and ensures
+   answer-key INSERT, SELECT, UPDATE, DELETE policies and correct table grants.
+6. If BOTH exist and all policies are okay, the REST API schema cache may be
+   stale. Run: NOTIFY pgrst, 'reload schema';
+   Also confirm Data API is enabled, public is exposed, and js/config.js
+   points to the same GradeDock project where you ran SQL.
+7. Re-run sql/00_CHECK_DATABASE.sql. All required table_status values should
+   show EXISTS and authenticated_can_select should be true for each table.
+8. Deploy the complete updated website (all files at the hosting root).
+   Hard refresh the website; for PWA, accept the Update ready prompt.
+9. Sign in as a teacher; create a test exam with a COMPLETE 5-item answer key.
+   Verify its answers from Exams > Set / Update Answer Key. Then change a key
+   and confirm it persists after a reload. Re-test existing saved exams.
+
+WHAT THE CODE NOW DOES
+- Reports which table the API cannot find and offers the appropriate SQL path.
+- If the exam is saved but its key cannot be saved, displays a persistent
+  warning in the exam-ready dialog. The exam remains available for retry;
+  it will not falsely tell you to create the exam again.
+- Prevents a failed answer-key update from erasing the previous key; the new
+  key is upserted before obsolete trailing answers are deleted.
+- If an existing key cannot be fetched, the key editor will not pretend
+  that the key is blank.
+- Bumps website and PWA asset versions to v3.27 so the fixes load.
+
+CAUTIONS
+- The database SQL files are MANUAL setup/repair steps; replacing the website
+  files does not create Supabase tables automatically.
+- No live Supabase account was accessed here; no SQL was run remotely.
+- A live end-to-end test requires a teacher sign-in to your Supabase project.
+- The public publishable key in js/config.js is not a service-role secret.

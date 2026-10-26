@@ -197,7 +197,7 @@ create table if not exists public.students (
   teacher_id uuid not null references auth.users(id) on delete cascade,
   class_id uuid not null references public.classes(id) on delete cascade,
   full_name text not null check (length(trim(full_name)) > 0),
-  gender text not null check (gender in ('Male', 'Female')),
+  gender text not null default 'Unspecified' check (gender in ('Male', 'Female', 'Unspecified')),
   lrn text,
   created_at timestamptz not null default now()
 );

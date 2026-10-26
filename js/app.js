@@ -684,18 +684,30 @@
         showExamCreatedActions(createdExam, hasCompleteKey);
         if (hasPartialKey) toast('Exam created. The incomplete key was not saved; add it later.', 'warn');
       } catch (err) {
-        const message = Store.friendlyError ? Store.friendlyError(err) : (err?.message || 'Could not create the exam.');
-        toast(message, 'warn');
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create exam'; }
+        const message = err?.message || (Store.friendlyError ? Store.friendlyError(err) : 'Could not create the exam.');
+        if (err?.createdExam) {
+          // Exam insert committed even though the separate key insert failed.
+          // Reflect that partial success and retain access to the answer-sheet tools.
+          try { await refresh(); } catch (reloadErr) {
+            if (!state.exams.some(x => x.id === err.createdExam.id)) state.exams.unshift(err.createdExam);
+            renderExams();
+          }
+          showExamCreatedActions(err.createdExam, false, message);
+        } else {
+          closeModal();
+          toast(Store.friendlyError ? Store.friendlyError(err) : message, 'warn');
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create exam'; }
+        }
       }
     };
   }
 
 
-  function showExamCreatedActions(exam, hasKey = false) {
+  function showExamCreatedActions(exam, hasKey = false, keyError = '') {
     if (!exam) return;
     modal(`
-      <div class="modal-head"><div><span class="kicker">EXAM READY</span><h3>${esc(exam.title)}</h3><p>${hasKey ? 'The exam and answer key are saved.' : 'The exam is saved. You can download the answer sheet now and add the correct answers later.'}</p></div><button class="icon-btn" data-close-modal>✕</button></div>
+      <div class="modal-head"><div><span class="kicker">${keyError ? 'EXAM SAVED · KEY NEEDS ATTENTION' : 'EXAM READY'}</span><h3>${esc(exam.title)}</h3><p>${hasKey ? 'The exam and answer key are saved.' : 'The exam is saved. You can download the answer sheet now and add the correct answers later.'}</p></div><button class="icon-btn" data-close-modal>✕</button></div>
+      ${keyError ? `<div role="alert" class="gd-key-save-warning"><strong>Answer key not saved</strong><p>${esc(keyError)}</p><small>After fixing Supabase, open Exams → Set / Update Answer Key. Do not create the exam again.</small></div>` : ''}
       <div class="exam-ready-body">
         <div class="exam-ready-summary"><strong>${exam.question_count} items</strong><span>A–${String.fromCharCode(64 + Number(exam.choice_count || 4))} choices</span></div>
         <button id="createdDownloadSheetPdf" class="btn btn-primary btn-block">⇩ Download Answer Sheet PDF</button>
@@ -744,7 +756,11 @@
     const exam = state.exams.find(x => x.id === id);
     if (!exam) return;
     let currentKey = [];
-    try { currentKey = await Store.examKey(exam.id); } catch (_) {}
+    try { currentKey = await Store.examKey(exam.id); }
+    catch (err) {
+      toast(Store.friendlyError ? Store.friendlyError(err) : err.message, 'warn');
+      return; // Do not pretend the key is empty when the table could not be read.
+    }
 
     const manualGrid = () => Array.from({ length: Number(exam.question_count) }, (_, i) => {
       const current = currentKey[i] || '';

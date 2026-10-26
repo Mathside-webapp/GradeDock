@@ -1,3 +1,5 @@
+-- LEGACY v2 SETUP ONLY. For a new GradeDock project, use 01_COMPLETE_SUPABASE_SETUP.sql.
+-- Existing project? Run 00_CHECK_DATABASE.sql first and use 05_REPAIR_EXAM_KEYS_EXISTING.sql when indicated.
 -- GradeDock v2 fresh Supabase setup
 -- Run this in the Supabase SQL Editor for a NEW GradeDock project.
 -- GradeDock v2 organizes scan results by section/class and does not require student accounts or rosters.

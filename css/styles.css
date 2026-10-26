@@ -601,3 +601,9 @@
   .auth-brand-panel {display:none;}
   .auth-brand-panel .auth-art {display:none;}
 }
+
+/* Database-repair notice: exam saved but answer key could not be stored. */
+.gd-key-save-warning { margin: 16px 22px 0; padding: 14px 16px; border: 1px solid #f2c779; border-radius: 14px; background: #fff8e9; color: #7a430b; line-height: 1.5; overflow-wrap: anywhere; }
+.gd-key-save-warning strong { display: block; font-weight: 750; margin-bottom: 4px; }
+.gd-key-save-warning p { margin: 0 0 6px; font-size: 0.9rem; }
+.gd-key-save-warning small { font-size: 0.8rem; }

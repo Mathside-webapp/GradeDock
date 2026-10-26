@@ -14,11 +14,18 @@
     friendlyError(err) {
       const message = String(err?.message || err || 'Unknown error');
       const code = String(err?.code || '');
-      if (code === 'PGRST205' || /relation .* does not exist|could not find the table|schema cache/i.test(message)) {
-        return 'GradeDock database tables are not installed yet. In Supabase SQL Editor, run sql/01_RUN_THIS_FIRST.sql, then refresh this page.';
+      // A PGRST205 error can mean a missing table OR a stale API schema cache.
+      // Show the table from Supabase's actual error instead of claiming that every table is missing.
+      if (code === 'PGRST205' || /relation .* does not exist|could not find the table/i.test(message)) {
+        const match = message.match(/(?:table|relation)\s+['\"]?(?:public\.)?([a-z_][a-z0-9_]*)['\"]?/i);
+        const table = match?.[1] || 'a required GradeDock table';
+        return `Supabase cannot access ${table}. Check that it exists in your GradeDock project (sql/00_CHECK_DATABASE.sql). If exams already exists but exam_keys is missing, run sql/05_REPAIR_EXAM_KEYS_EXISTING.sql. For a brand-new empty GradeDock project, run sql/01_COMPLETE_SUPABASE_SETUP.sql. If all tables exist, refresh the Supabase API schema cache.`;
       }
-      if (/row-level security|violates row-level security/i.test(message)) {
-        return 'Supabase blocked this action. Run the latest sql/01_RUN_THIS_FIRST.sql so the required RLS policies are installed.';
+      if (code === 'PGRST204' || /column .* schema cache/i.test(message)) {
+        return `Supabase's API does not recognize a required column: ${message}. Check your database version and refresh its schema cache.`;
+      }
+      if (/row-level security|violates row-level security/i.test(message) || code === '42501') {
+        return `Supabase denied this operation (permissions/RLS). Check that you are signed in and your project's policies allow access. Details: ${message}`;
       }
       return message;
     },
@@ -149,7 +156,14 @@
       if (completeKey) {
         const rows = key.map((answer, i) => ({ exam_id: exam.id, question_number: i + 1, correct_answer: answer }));
         const keyInsert = await client.from('exam_keys').insert(rows);
-        if (keyInsert.error) throw keyInsert.error;
+        if (keyInsert.error) {
+          // The first request already committed the exam. Preserve it and tell the UI
+          // precisely what happened, rather than encouraging the user to create duplicates.
+          const failure = new Error(`Exam created, but its answer key was not saved. ${this.friendlyError(keyInsert.error)}`);
+          failure.createdExam = exam;
+          failure.code = keyInsert.error.code;
+          throw failure;
+        }
       }
       return exam;
     },
@@ -179,11 +193,14 @@
         throw new Error('The imported answer key must contain a correct answer for every item.');
       }
       
-      const removed = await client.from('exam_keys').delete().eq('exam_id', examId);
-      if (removed.error) throw removed.error;
+      // Write the replacement BEFORE removing anything. A failed write must not erase
+      // a previously saved key. The database has a unique (exam_id, question_number) key.
       const rows = key.map((answer, i) => ({ exam_id: examId, question_number: i + 1, correct_answer: answer }));
-      const inserted = await client.from('exam_keys').insert(rows);
-      if (inserted.error) throw inserted.error;
+      const saved = await client.from('exam_keys').upsert(rows, { onConflict: 'exam_id,question_number' });
+      if (saved.error) throw saved.error;
+      // If the teacher imported a shorter test, remove only the obsolete trailing items.
+      const removed = await client.from('exam_keys').delete().eq('exam_id', examId).gt('question_number', key.length);
+      if (removed.error) throw removed.error;
       return key;
     },
 

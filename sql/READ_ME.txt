@@ -1,1 +1,2 @@
-For a brand new Supabase project, run ../../01_COMPLETE_SUPABASE_SETUP.sql ONLY. Do not run older upgrade files.
+Read READ_ME_FIRST.txt and ../GRADEDOCK-EXAM-ANSWER-KEY-FIX.txt before running any SQL.
+Never run GradeDock SQL in your Mathside, ClassCheck, or QuizArena project.
