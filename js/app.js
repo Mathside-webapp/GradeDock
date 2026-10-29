@@ -17,6 +17,11 @@
   let cameraAssistTimer = null;
   let cameraAssistBusy = false;
   let cameraAssistLastState = '';
+  let cameraAssistLastStatusKey = '';
+  let cameraAssistHideTimer = null;
+  let cameraAssistPendingKey = '';
+  let cameraAssistPendingCount = 0;
+  const transientToastKeys = new Map();
 
   const subtitles = {
     dashboard: 'Overview of your classes and assessments',
@@ -48,11 +53,22 @@
   }
 
   function toast(message, type = 'ok') {
+    const host = $('#toastHost');
+    if (!host) return;
+    const key = `${type}:${message}`;
+    const now = Date.now();
+    // Duplicate errors from multiple callbacks should never cover the camera.
+    if (now - (transientToastKeys.get(key) || 0) < 3000) return;
+    transientToastKeys.set(key, now);
+    if (transientToastKeys.size > 60) transientToastKeys.clear();
+    // Present one brief and readable notice at a time, without stacking.
+    host.replaceChildren();
     const el = document.createElement('div');
     el.className = `toast ${type}`;
+    el.setAttribute('role', type === 'warn' ? 'alert' : 'status');
     el.textContent = message;
-    $('#toastHost').appendChild(el);
-    setTimeout(() => el.remove(), 3500);
+    host.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
   }
 
   function modal(html) {
@@ -934,10 +950,12 @@
       $('#scanConfidence').textContent = 'Needs retake';
       $('#scanConfidence').className = 'badge warn';
       $('#scanStatusText').textContent = err.message;
-      if (window.GradeDockScanner?.stream) {
-        setCameraAssistStatus({ state: 'warn', title: 'Not ready to scan', text: 'Reposition the paper, wait for a green GOOD TO SCAN message, then retry.' }, true);
-      }
-      toast(err.message, 'warn');
+      // Scanning failures are already shown in the recognition preview. Avoid a
+      // second oversized error popup on top of the live camera.
+      $('#scanEmpty').classList.remove('hidden');
+      $('#scanResult').classList.add('hidden');
+      const qualityIssue = /printed item numbers|corner (?:squares|marks)|answer circles|too tilted|matching GradeDock sheet/i.test(err.message || '');
+      if (!qualityIssue) toast(err.message, 'warn');
       return false;
     }
   }
@@ -1481,11 +1499,18 @@
     const box = $('#cameraScanAssist');
     if (!box) return;
     if (!visible) {
+      if (cameraAssistHideTimer) clearTimeout(cameraAssistHideTimer);
+      cameraAssistHideTimer = null;
       box.classList.add('hidden');
       box.style.setProperty('display', 'none', 'important');
       return;
     }
     const stateName = status.state || 'searching';
+    // A steady camera condition gets ONE notice, not a new one every 550ms.
+    const key = `${stateName}:${status.title || ''}`;
+    if (key === cameraAssistLastStatusKey) return;
+    cameraAssistLastStatusKey = key;
+    if (cameraAssistHideTimer) clearTimeout(cameraAssistHideTimer);
     box.classList.remove('hidden', 'state-starting', 'state-searching', 'state-focus', 'state-warn', 'state-ready', 'state-reading');
     box.style.setProperty('display', 'grid', 'important');
     box.classList.add(`state-${stateName}`);
@@ -1498,6 +1523,18 @@
     if (text) text.textContent = status.text || 'Keep the whole sheet visible and hold the camera steady.';
     if (icon) icon.textContent = stateName === 'ready' ? '✓' : stateName === 'reading' ? '⌗' : '!';
 
+    // Restart the fade animation only for a meaningful new camera state.
+    box.classList.remove('assist-brief');
+    void box.offsetWidth;
+    box.classList.add('assist-brief');
+    cameraAssistHideTimer = setTimeout(() => {
+      box.classList.remove('assist-brief');
+      box.classList.add('hidden');
+      box.style.setProperty('display', 'none', 'important');
+      cameraAssistHideTimer = null;
+      // Keep cameraAssistLastStatusKey: unchanged conditions must not reappear.
+    }, 3000);
+
     if (stateName === 'ready' && cameraAssistLastState !== 'ready' && navigator.vibrate) {
       try { navigator.vibrate(35); } catch (_) {}
     }
@@ -1509,6 +1546,11 @@
     cameraAssistTimer = null;
     cameraAssistBusy = false;
     cameraAssistLastState = '';
+    cameraAssistLastStatusKey = '';
+    cameraAssistPendingKey = '';
+    cameraAssistPendingCount = 0;
+    if (cameraAssistHideTimer) clearTimeout(cameraAssistHideTimer);
+    cameraAssistHideTimer = null;
     if (hide) setCameraAssistStatus({}, false);
   }
 
@@ -1518,10 +1560,19 @@
     if (!video) return;
     cameraAssistBusy = true;
     try {
-      const status = window.GradeDockScanner.inspectFrame(video);
-      setCameraAssistStatus(status, true);
-    } catch (err) {
-      setCameraAssistStatus({ state: 'searching', title: 'Looking for answer sheet…', text: 'Keep the entire paper visible and hold the camera steady.' }, true);
+      let status;
+      try {
+        status = window.GradeDockScanner.inspectFrame(video);
+      } catch (_) {
+        status = { state: 'searching', title: 'Looking for answer sheet…', text: 'Show the full paper and all four corner marks.' };
+      }
+      // Two consistent checks stop brightness/focus jitter flashing warnings.
+      const key = `${status.state}:${status.title}`;
+      if (key === cameraAssistPendingKey) cameraAssistPendingCount++;
+      else { cameraAssistPendingKey = key; cameraAssistPendingCount = 1; }
+      if (cameraAssistPendingCount >= 2 || status.state === 'ready') {
+        setCameraAssistStatus(status, true);
+      }
     } finally {
       cameraAssistBusy = false;
     }
@@ -1529,9 +1580,8 @@
 
   function startCameraAssist() {
     stopCameraAssist(false);
-    setCameraAssistStatus({ state: 'starting', title: 'Not ready to scan', text: 'Show the whole answer sheet and hold the phone steady.' }, true);
-    updateCameraAssist();
-    cameraAssistTimer = setInterval(updateCameraAssist, 550);
+    setCameraAssistStatus({ state: 'starting', title: 'Position the answer sheet', text: 'Fit all four black corner squares inside the guide.' }, true);
+    cameraAssistTimer = setInterval(updateCameraAssist, 700);
   }
 
   function switchScanMode(mode) {
@@ -1622,7 +1672,7 @@
         button.title = orientation === 'portrait' ? 'Switch camera view to landscape' : 'Switch camera view to portrait';
       }
     };
-    window.GradeDockScanner?.setOrientation?.('landscape');
+    window.GradeDockScanner?.setOrientation?.('portrait');
     syncCameraOrientationUI();
 
     $('#cameraOrientationBtn').onclick = async () => {

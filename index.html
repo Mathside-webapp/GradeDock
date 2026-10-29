@@ -14,7 +14,7 @@
   <link rel="icon" href="assets/favicon-32.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="css/styles.css?v=3.27" />
+  <link rel="stylesheet" href="css/styles.css?v=3.28" />
   <link rel="stylesheet" href="css/pwa.css?v=1" />
 </head>
 <body>
@@ -117,6 +117,7 @@
             <div id="cameraMode" class="scan-mode active">
               <div class="camera-stage">
                 <video id="cameraVideo" playsinline autoplay muted></video>
+                <div class="sheet-position-guide" aria-hidden="true"><span>Fit all 4 black corner marks</span></div>
                 <div class="camera-placeholder" id="cameraPlaceholder"><span>📷</span><strong>Camera is off</strong><small>Select a section and exam, then start the camera. GradeDock will tell you when the image is ready to scan.</small></div>
                 <div id="cameraScanAssist" class="camera-scan-assist hidden" role="status" aria-live="polite">
                   <span class="camera-scan-assist-label">NOT READY</span>
@@ -202,11 +203,11 @@
   <script src="js/config.js"></script>
   <script src="js/sheet.js"></script>
   <script src="js/excel.js"></script>
-  <script src="js/scanner.js?v=3.18"></script>
+  <script src="js/scanner.js?v=3.28"></script>
   <script src="js/store.js?v=3.27"></script>
   <script src="js/roster-import.js?v=4"></script>
   <script src="js/item-analysis.js?v=1"></script>
-  <script src="js/app.js?v=3.27"></script>
+  <script src="js/app.js?v=3.28"></script>
   <script src="js/ui-extras.js?v=2"></script>
   <script src="js/pwa.js?v=1"></script>
 </body>

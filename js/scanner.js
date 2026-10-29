@@ -2,7 +2,7 @@
   const Scanner = {
     stream: null,
     facingMode: 'environment',
-    orientation: 'landscape',
+    orientation: 'portrait',
 
     async startCamera(video) {
       this.stopCamera(video);

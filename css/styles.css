@@ -607,3 +607,73 @@
 .gd-key-save-warning strong { display: block; font-weight: 750; margin-bottom: 4px; }
 .gd-key-save-warning p { margin: 0 0 6px; font-size: 0.9rem; }
 .gd-key-save-warning small { font-size: 0.8rem; }
+
+
+/* GradeDock v3.28 — calm 3-second alerts and uncropped portrait scanning. */
+.toast-host{pointer-events:none!important;max-width:calc(100vw - 28px)!important}
+.toast{
+  background:rgba(220,252,231,.95)!important;
+  color:#14532d!important;
+  border:1px solid rgba(22,163,74,.22)!important;
+  box-shadow:0 8px 24px rgba(15,23,42,.12)!important;
+  font-size:13px!important;
+  line-height:1.45!important;
+  animation:gd-toast-brief 3s ease forwards!important;
+}
+.toast.warn{
+  background:rgba(254,226,226,.96)!important;
+  color:#7f1d1d!important;
+  border-color:rgba(220,38,38,.25)!important;
+}
+@keyframes gd-toast-brief{
+  0%{opacity:0;transform:translateY(-5px)}
+  8%,88%{opacity:1;transform:translateY(0)}
+  100%{opacity:0;transform:translateY(-5px)}
+}
+.camera-stage #cameraVideo,
+.camera-stage.camera-portrait #cameraVideo,
+.camera-stage.camera-landscape #cameraVideo{
+  object-fit:contain!important; /* Never crop a paper corner from the live preview. */
+}
+.camera-stage .sheet-position-guide{display:none;position:absolute;z-index:2;pointer-events:none;
+  width:81%;height:86%;left:9.5%;top:7%;border:1.5px dashed rgba(218,234,255,.64);
+  border-radius:8px;box-shadow:0 0 0 200vmax rgba(0,0,0,.045);
+}
+.camera-stage.camera-landscape .sheet-position-guide{width:44%;height:84%;left:28%;top:8%}
+.camera-stage:has(.camera-placeholder.hidden) .sheet-position-guide{display:block}
+.sheet-position-guide span{position:absolute;top:5px;left:50%;transform:translateX(-50%);
+  white-space:nowrap;max-width:95%;overflow:hidden;text-overflow:ellipsis;
+  padding:3px 8px;border-radius:999px;color:#fff;background:rgba(15,23,42,.47);
+  font-size:10px;font-weight:700;letter-spacing:.01em;
+}
+.camera-stage .camera-scan-assist{
+  background:rgba(150,43,50,.66)!important;
+  box-shadow:0 -3px 12px rgba(0,0,0,.12)!important;
+  -webkit-backdrop-filter:blur(5px)!important;
+  backdrop-filter:blur(5px)!important;
+}
+.camera-stage .camera-scan-assist.state-starting,
+.camera-stage .camera-scan-assist.state-searching,
+.camera-stage .camera-scan-assist.state-focus,
+.camera-stage .camera-scan-assist.state-warn{
+  background:rgba(150,43,50,.66)!important;
+}
+.camera-stage .camera-scan-assist.state-ready{
+  background:rgba(20,110,69,.67)!important;
+}
+.camera-stage .camera-scan-assist.state-reading{
+  background:rgba(37,85,169,.68)!important;
+}
+.camera-stage .camera-scan-assist.assist-brief{
+  animation:gd-assist-brief 3s ease forwards!important;
+}
+@keyframes gd-assist-brief{
+  0%{opacity:0;transform:translateY(6px) translateZ(1px)}
+  9%,88%{opacity:1;transform:translateY(0) translateZ(1px)}
+  100%{opacity:0;transform:translateY(6px) translateZ(1px)}
+}
+@media(max-width:760px){
+  .toast-host{top:calc(env(safe-area-inset-top,0px) + 12px)!important;right:12px!important;left:12px!important}
+  .toast{max-width:100%!important;font-size:12px!important}
+  .sheet-position-guide span{font-size:9px}
+}
