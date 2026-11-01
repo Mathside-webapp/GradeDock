@@ -14,7 +14,7 @@
   <link rel="icon" href="assets/favicon-32.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="css/styles.css?v=3.28" />
+  <link rel="stylesheet" href="css/styles.css?v=3.29" />
   <link rel="stylesheet" href="css/pwa.css?v=1" />
 </head>
 <body>
@@ -136,6 +136,12 @@
           </section>
           <section class="panel scan-preview-panel">
             <div class="panel-head"><div><h3>Recognition preview</h3><p id="scanStatusText">Choose a section and exam, then capture or upload a sheet.</p></div><span id="scanConfidence" class="badge neutral">Waiting</span></div>
+            <div id="scanManualPanel" class="manual-scan-panel hidden">
+              <div class="manual-scan-head"><strong>Adjust the paper corners</strong><small id="scanManualHint">Tap the center of each printed black square: top left, top right, bottom left, bottom right.</small></div>
+              <canvas id="scanManualCanvas" aria-label="Answer-sheet photograph: tap four corner squares in order"></canvas>
+              <div class="manual-scan-actions"><button type="button" id="resetScanCornersBtn" class="btn btn-soft btn-compact">↻ Reset corners</button><button type="button" id="applyScanCornersBtn" class="btn btn-primary btn-compact" disabled>⌗ Scan using corners</button></div>
+              <small class="manual-scan-note">You can drag an existing numbered point to fix its position. GradeDock will still ask you to review uncertain answers.</small>
+            </div>
             <div id="scanEmpty" class="empty-state tall"><span>⌗</span><h4>No paper scanned yet</h4><p>Your detected answers and score will appear here.</p></div>
             <div id="scanResult" class="hidden"></div>
           </section>
@@ -203,11 +209,11 @@
   <script src="js/config.js"></script>
   <script src="js/sheet.js"></script>
   <script src="js/excel.js"></script>
-  <script src="js/scanner.js?v=3.28"></script>
+  <script src="js/scanner.js?v=3.29"></script>
   <script src="js/store.js?v=3.27"></script>
   <script src="js/roster-import.js?v=4"></script>
   <script src="js/item-analysis.js?v=1"></script>
-  <script src="js/app.js?v=3.28"></script>
+  <script src="js/app.js?v=3.29"></script>
   <script src="js/ui-extras.js?v=2"></script>
   <script src="js/pwa.js?v=1"></script>
 </body>

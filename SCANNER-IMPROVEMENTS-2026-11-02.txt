@@ -1,0 +1,43 @@
+GRADEDOCK SCANNING UPDATE — 2026-11-02
+
+What changed
+------------
+1. More reliable camera startup: waits for usable video metadata AND a real decoded frame; shows clearer permission/busy/HTTPS troubleshooting instead of reporting that a black camera preview is ready.
+2. Camera requests more suitable picture dimensions without forcing unsupported constraints, and still supports front/back cameras and orientation selection.
+3. Removed the near-black (#121721) scanner-stage background and its black letterbox area. The camera placeholder now has a light background; live photo is displayed without cropping.
+4. Registration detection now uses local adaptive image thresholds with global fallback, is less strict about perspective, and examines a smaller image for quicker alignment. No additional runtime library, API account, or server is needed.
+5. Failed image alignment can be corrected in the Recognition preview. Tap the centers of the FOUR BLACK CORNER SQUARES in this order: top left, top right, bottom left, bottom right. You can drag the numbered points to refine them. Tap "Scan using corners". If unsuccessful, you can adjust the points and retry.
+6. If a paper cannot be read, your original photo stays available in the manual editor instead of requiring another camera capture.
+7. Improved exceptions for image uploads and capture; disabled Capture & check while it is processing to prevent duplicate scans.
+8. Existing OMR validation, low-confidence review, class results, Supabase credentials/config, answer sheets, OCR, PDF/PNG, exports and menus are unchanged.
+9. The PWA cache version and script versions were updated so visitors receive new scanner code.
+
+HOW TO SCAN
+-----------
+1. Select a Section / Class and an Exam. Ensure the Exam has a complete answer key.
+2. Select Use camera and Start camera. Stand above a flat, evenly lit sheet and keep the four printed black squares in view. You can press Capture & check even if the readiness helper hasn't turned green.
+3. If the live camera remains dark, check permissions, browser HTTPS, and camera availability. Use Take photo instead or Upload image as a dependable alternative.
+4. If automatic alignment fails, use Adjust the paper corners: tap the actual square CENTERS top-left, top-right, bottom-left, bottom-right, then Scan using corners. Tap Reset corners if you made a mistake.
+5. Review all flagged/uncertain answers before saving. The scanner never silently resolves ambiguous answers using the answer key.
+
+ABOUT THE BLACK SQUARES
+-----------------------
+The four black squares on printed answer sheets are intentional registration markers. They MUST remain on all sheets. The black empty camera background, however, was a UI styling choice and has been replaced with light gray. A genuinely black camera image can still mean a covered lens, denied permission, another app using the camera, or a browser/phone issue.
+
+LIBRARY RESEARCH / CHOICE
+-------------------------
+- OpenCV.js (https://docs.opencv.org/) offers adaptive thresholding, contour detection and perspective transforms, useful for a later optional heavy-duty mode.
+- jscanify (https://github.com/puffinsoft/jscanify) wraps OpenCV.js to find and flatten document edges. It does NOT itself grade multiple-choice bubble sheets or verify GradeDock's square-marker calibration.
+- Python OpenCV (https://opencv.org/) and OMRChecker (https://github.com/Udayraj123/OMRChecker) are viable for a separate scanning backend/batch image service; they cannot run directly inside the existing GitHub Pages JavaScript site without adding substantial infrastructure.
+- This version deliberately stays browser-only: it implements OpenCV-style adaptive local thresholding and a four-point perspective transform in lightweight JavaScript already compatible with your existing sheet format. No internet dependency beyond your existing libraries.
+
+VERIFICATION
+------------
+- JavaScript syntax checks and existing project tests passed.
+- Synthetic 40-question papers with bubble marks were scanned successfully in headless Chromium in flat, perspective-skewed, shadowed, blurred, smaller-in-frame, rotated 90 degrees, rotated 180 degrees and mirrored test cases. Test images were generated from GradeDock's own template.
+- Browser interaction for manual 4-corner point selection was tested.
+- Physical phone-camera tests and real student answer sheets have NOT been performed here; real-world accuracy still depends on lighting, printing scale, the camera and pencil marks. Test with real papers before grading a full class.
+
+INSTALLATION
+------------
+Upload the CONTENTS of the GradeDock-main folder to your existing GitHub repository, preserving your site path and js/config.js settings (already retained in this ZIP). If GradeDock is installed as a PWA, accept the update prompt/reload after publishing. No new SQL statements, Supabase tables, storage bucket settings or Edge Functions are necessary for this front-end update.

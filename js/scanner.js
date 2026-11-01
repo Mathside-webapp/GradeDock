@@ -7,61 +7,69 @@
     async startCamera(video) {
       this.stopCamera(video);
       if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-        throw new Error('Live camera requires HTTPS or localhost. If you opened index.html directly, use a local server/GitHub Pages or choose Take photo instead.');
+        throw new Error('Camera needs HTTPS. Open GradeDock using your GitHub Pages link, or use Take photo instead.');
       }
       if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Live camera is not available in this browser. Use Take photo instead or Upload image.');
+        throw new Error('Camera not supported here. Use Take photo instead or Upload image.');
       }
-
       const portrait = this.orientation === 'portrait';
-      const preferred = {
-        video: {
-          facingMode: { ideal: this.facingMode },
-          width: { ideal: portrait ? 1080 : 1920 },
-          height: { ideal: portrait ? 1920 : 1080 },
-          aspectRatio: { ideal: portrait ? 0.75 : (4 / 3) }
-        },
-        audio: false
-      };
-
+      const preferred = {audio:false, video:{
+        facingMode:{ideal:this.facingMode},
+        width:{ideal:portrait ? 1440 : 1920},
+        height:{ideal:portrait ? 1920 : 1440},
+        frameRate:{ideal:24,max:30}
+      }};
       try {
-        this.stream = await navigator.mediaDevices.getUserMedia(preferred);
-      } catch (err) {
-        // Some desktop cameras reject facingMode/size constraints. Retry with a plain video request.
-        if (['OverconstrainedError', 'NotFoundError'].includes(err?.name)) {
-          this.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        } else if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') {
-          throw new Error('Camera permission was blocked. Allow camera access in your browser, then press Start camera again.');
-        } else if (err?.name === 'NotReadableError') {
-          throw new Error('The camera is already being used by another app or browser tab. Close it there and try again.');
-        } else {
-          throw err;
+        try { this.stream = await navigator.mediaDevices.getUserMedia(preferred); }
+        catch (err) {
+          if (['OverconstrainedError','NotFoundError','TypeError'].includes(err?.name)) {
+            this.stream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+          } else { throw err; }
         }
-      }
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline','');
+        video.srcObject = this.stream;
+        try {
+          const track=this.stream.getVideoTracks()[0];
+          const caps=track?.getCapabilities?.() || {};
+          const advanced={};
+          for (const [name,value] of Object.entries({focusMode:'continuous',exposureMode:'continuous',whiteBalanceMode:'continuous'})) {
+            if (Array.isArray(caps[name]) && caps[name].includes(value)) advanced[name]=value;
+          }
+          if (Object.keys(advanced).length) await track.applyConstraints({advanced:[advanced]});
+        } catch (_) { /* Optional controls are not supported on all phones. */ }
 
-      video.srcObject = this.stream;
-      // Ask supported mobile cameras to keep focus/exposure/white balance moving
-      // continuously while the teacher positions the paper. Unsupported browsers
-      // simply ignore these optional constraints.
-      try {
-        const track = this.stream.getVideoTracks?.()[0];
-        const caps = track?.getCapabilities?.() || {};
-        const advanced = {};
-        if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) advanced.focusMode = 'continuous';
-        if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes('continuous')) advanced.exposureMode = 'continuous';
-        if (Array.isArray(caps.whiteBalanceMode) && caps.whiteBalanceMode.includes('continuous')) advanced.whiteBalanceMode = 'continuous';
-        if (Object.keys(advanced).length) await track.applyConstraints({ advanced: [advanced] });
-      } catch (_) {}
-      await new Promise((resolve, reject) => {
-        if (video.readyState >= 1) return resolve();
-        const onLoaded = () => { cleanup(); resolve(); };
-        const onError = () => { cleanup(); reject(new Error('The camera opened but the video preview could not start.')); };
-        const cleanup = () => { video.removeEventListener('loadedmetadata', onLoaded); video.removeEventListener('error', onError); };
-        video.addEventListener('loadedmetadata', onLoaded, { once: true });
-        video.addEventListener('error', onError, { once: true });
-      });
-      await video.play();
-      return true;
+        // 'loadedmetadata' can fire while videoWidth is still zero on iOS.
+        // Wait for a real frame rather than displaying a black rectangle as ready.
+        const ready = new Promise((resolve,reject) => {
+          let complete=false;
+          const finish=(error) => {
+            if(complete)return; complete=true;
+            clearTimeout(timer);
+            video.removeEventListener('loadeddata',check);
+            video.removeEventListener('playing',check);
+            video.removeEventListener('error',failed);
+            error ? reject(error) : resolve();
+          };
+          const check=()=>{if(video.videoWidth>0 && video.videoHeight>0 && video.readyState>=2)finish();};
+          const failed=()=>finish(new Error('The camera preview failed to start. Try Restart camera or Take photo instead.'));
+          const timer=setTimeout(()=>finish(new Error('The camera did not provide a picture. Check camera permissions or use Take photo instead.')),8000);
+          video.addEventListener('loadeddata',check);
+          video.addEventListener('playing',check);
+          video.addEventListener('error',failed);
+          check();
+        });
+        await Promise.all([video.play(),ready]);
+        return true;
+      } catch(err) {
+        this.stopCamera(video);
+        if (['NotAllowedError','SecurityError','PermissionDeniedError'].includes(err?.name))
+          throw new Error('Camera permission denied. Allow camera access in site settings, or tap Take photo instead.');
+        if (['NotReadableError','TrackStartError','AbortError'].includes(err?.name))
+          throw new Error('The camera may be in use by another app. Close it and retry, or tap Take photo instead.');
+        throw err;
+      }
     },
 
     stopCamera(video) {
@@ -92,7 +100,7 @@
 
       // Live quality check: low-resolution enough to stay smooth on phones, but
       // large enough to see the printed registration markers and paper detail.
-      const maxW = 520;
+      const maxW = 640;
       const scale = Math.min(1, maxW / vw);
       const w = Math.max(1, Math.round(vw * scale));
       const h = Math.max(1, Math.round(vh * scale));
@@ -123,16 +131,16 @@
       const glare = samples ? veryBright / samples : 0;
       const darkRatio = samples ? veryDark / samples : 0;
 
-      if (mean < 48) {
+      if (mean < 42) {
         return { state: 'warn', ready: false, title: 'Too dark to scan', text: 'Add soft light or move out of the shadow.', mean, sharpness };
       }
       if (glare > .26 && mean > 188) {
         return { state: 'warn', ready: false, title: 'Glare detected', text: 'Tilt the phone or move away from direct light.', mean, sharpness, glare };
       }
-      if (sharpness < 3.5) {
+      if (sharpness < 2.8) {
         return { state: 'focus', ready: false, title: 'Image is not focused', text: 'Hold still and wait for the camera to focus.', mean, sharpness };
       }
-      if (darkRatio > .35) {
+      if (darkRatio > .60) {
         return { state: 'warn', ready: false, title: 'Paper is partly covered', text: 'Keep fingers and dark objects away from the answer sheet.', mean, sharpness };
       }
 
@@ -147,8 +155,8 @@
       } catch (err) {
         return {
           state: 'searching', ready: false,
-          title: 'Not ready to scan',
-          text: 'Show the entire answer sheet, including all four printed black corner marks.',
+          title: 'Move closer or try a photo',
+          text: 'Keep all four corner squares visible. You can also Capture & check, then adjust corners manually.',
           mean, sharpness, reason: err?.message || ''
         };
       }
@@ -189,76 +197,125 @@
     async fileToCanvas(file, canvas) {
       const url = URL.createObjectURL(file);
       const img = new Image();
-      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
-      const max = 2400, scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
-      canvas.width = Math.round(img.naturalWidth * scale); canvas.height = Math.round(img.naturalHeight * scale);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      return canvas;
+      try {
+        await new Promise((resolve,reject) => { img.onload=resolve; img.onerror=()=>reject(new Error('Could not read this image. Use a JPG or PNG photo.')); img.src=url; });
+        const max=2800,scale=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+        canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+        canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+        canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+        return canvas;
+      } finally {URL.revokeObjectURL(url);}
     },
 
+    // GradeDock uses four printed registration squares, not just page edges.
+    // Adaptive local contrast handles shadows and nonwhite desks without OpenCV/WASM.
+    // Analyse a bounded copy so live mobile scanning stays responsive.
     findMarkers(canvas) {
-      // Search the whole photo: a printed form can occupy only part of the
-      // frame, and dark desks must not determine the paper's ink threshold.
-      const scale=Math.min(1,1400/Math.max(canvas.width,canvas.height));
-      const w=Math.round(canvas.width*scale), h=Math.round(canvas.height*scale);
+      const scale=Math.min(1,960/Math.max(canvas.width,canvas.height));
+      const w=Math.max(1,Math.round(canvas.width*scale));
+      const h=Math.max(1,Math.round(canvas.height*scale));
       const temp=document.createElement('canvas');temp.width=w;temp.height=h;
-      const ctx=temp.getContext('2d',{willReadFrequently:true});ctx.drawImage(canvas,0,0,w,h);
-      const rgba=ctx.getImageData(0,0,w,h).data,gray=new Uint8Array(w*h);
-      for(let i=0;i<gray.length;i++)gray[i]=rgba[i*4]*.299+rgba[i*4+1]*.587+rgba[i*4+2]*.114;
-      const candidates=[],stack=new Int32Array(w*h);
-      for(const threshold of [80,115,150,185]) {
-        const seen=new Uint8Array(w*h);
-        for(let seed=0;seed<gray.length;seed++) {
-          if(seen[seed]||gray[seed]>threshold)continue;
-          let length=1,area=0,minX=w,maxX=0,minY=h,maxY=0;
-          stack[0]=seed;seen[seed]=1;
-          while(length) {
-            const i=stack[--length],x=i%w,y=Math.floor(i/w);area++;
-            minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);
-            const neighbours=[x?i-1:-1,x<w-1?i+1:-1,y?i-w:-1,y<h-1?i+w:-1];
-            for(const n of neighbours)if(n>=0&&!seen[n]){seen[n]=1;if(gray[n]<=threshold)stack[length++]=n;}
+      const ctx=temp.getContext('2d',{willReadFrequently:true});
+      ctx.drawImage(canvas,0,0,w,h);
+      const rgba=ctx.getImageData(0,0,w,h).data;
+      const gray=new Uint8Array(w*h);
+      for(let i=0;i<gray.length;i++)gray[i]=Math.round(rgba[i*4]*.299+rgba[i*4+1]*.587+rgba[i*4+2]*.114);
+      const integral=new Float64Array((w+1)*(h+1)),stride=w+1;
+      for(let y=0;y<h;y++){
+        let row=0,cur=(y+1)*stride,prev=y*stride;
+        for(let x=0;x<w;x++){row+=gray[y*w+x];integral[cur+x+1]=integral[prev+x+1]+row;}
+      }
+      const radius=Math.max(15,Math.round(Math.min(w,h)*.034));
+      const mask=new Uint8Array(w*h),stack=new Int32Array(w*h);
+      const candidates=[];
+      const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+      const add=(c)=>{
+        const old=candidates.find(o=>dist(o,c)<Math.max(5,Math.min(o.side,c.side)*.85));
+        if(old){if(c.fill>old.fill || c.area>old.area*1.2)Object.assign(old,c);}
+        else candidates.push(c);
+      };
+      // Pass 1 is adaptive; passes 2 and 3 cover photos whose contrast is
+      // already flat/strong (for example a scanned PNG or heavily exposed sheet).
+      for (const mode of ['adaptive','dark','medium']) {
+        if(mode==='adaptive') {
+          for(let y=0;y<h;y++){
+            const top=Math.max(0,y-radius),bottom=Math.min(h-1,y+radius);
+            const base=y*w,ra=top*stride,rb=(bottom+1)*stride;
+            for(let x=0;x<w;x++){
+              const l=Math.max(0,x-radius),r=Math.min(w-1,x+radius);
+              const avg=(integral[rb+r+1]-integral[ra+r+1]-integral[rb+l]+integral[ra+l])/((r-l+1)*(bottom-top+1));
+              mask[base+x]=gray[base+x]<Math.min(205,avg-27)?1:0;
+            }
           }
-          const bw=maxX-minX+1,bh=maxY-minY+1,fill=area/(bw*bh),ratio=bw/bh;
-          if(area<20||Math.min(bw,bh)<4||Math.max(bw,bh)>Math.min(w,h)*.12||
-             ratio<.60||ratio>1.67||fill<.82)continue;
-          const c={x:(minX+maxX)/2,y:(minY+maxY)/2,side:Math.sqrt(area),fill,area};
-          const old=candidates.find(o=>Math.hypot(o.x-c.x,o.y-c.y)<Math.min(o.side,c.side)*.45);
-          if(old){if(c.fill>old.fill)Object.assign(old,c);}else candidates.push(c);
+        } else {
+          const threshold=mode==='dark'?110:172;
+          for(let i=0;i<gray.length;i++)mask[i]=gray[i]<threshold?1:0;
+        }
+        for(let seed=0;seed<mask.length;seed++){
+          if(!mask[seed])continue;
+          let length=1,area=0,minX=w,maxX=-1,minY=h,maxY=-1;
+          stack[0]=seed;mask[seed]=0;
+          while(length){
+            const i=stack[--length],x=i%w,y=(i/w)|0;
+            area++;
+            if(x<minX)minX=x;if(x>maxX)maxX=x;
+            if(y<minY)minY=y;if(y>maxY)maxY=y;
+            const a=x?i-1:-1,b=x<w-1?i+1:-1,c=y?i-w:-1,d=y<h-1?i+w:-1;
+            if(a>=0&&mask[a]){mask[a]=0;stack[length++]=a;}
+            if(b>=0&&mask[b]){mask[b]=0;stack[length++]=b;}
+            if(c>=0&&mask[c]){mask[c]=0;stack[length++]=c;}
+            if(d>=0&&mask[d]){mask[d]=0;stack[length++]=d;}
+          }
+          const bw=maxX-minX+1,bh=maxY-minY+1;
+          const fill=area/(bw*bh),ratio=bw/bh;
+          if(area<14||Math.min(bw,bh)<4||Math.max(bw,bh)>Math.min(w,h)*.115||
+             ratio<.48||ratio>2.05||fill<.57||area>Math.min(w,h)**2*.014)continue;
+          add({x:(minX+maxX)/2,y:(minY+maxY)/2,side:Math.sqrt(area),fill,area});
+        }
+        if(candidates.length>=4) {
+          // Not every set of four candidates is a sheet; validate the geometry.
+          const best=this._chooseMarkerQuad(candidates,w,h);
+          if(best)return best.map((p,i)=>({x:p.x/scale,y:p.y/scale,name:['tl','tr','bl','br'][i]}));
         }
       }
-      const pool=candidates.sort((a,b)=>b.area-a.area).slice(0,24);
-      let best=null;
+      throw new Error('Four corner squares not detected. Retake with the whole page visible, or choose Adjust corners to mark them yourself.');
+    },
+
+    _chooseMarkerQuad(candidates,w,h) {
+      const pool=[...candidates].sort((a,b)=>b.area-a.area).slice(0,28);
       const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+      let best=null;
       for(let a=0;a<pool.length-3;a++)for(let b=a+1;b<pool.length-2;b++)
-      for(let c=b+1;c<pool.length-1;c++)for(let d=c+1;d<pool.length;d++) {
+      for(let c=b+1;c<pool.length-1;c++)for(let d=c+1;d<pool.length;d++){
         const points=[pool[a],pool[b],pool[c],pool[d]];
-        const center={x:points.reduce((s,p)=>s+p.x,0)/4,y:points.reduce((s,p)=>s+p.y,0)/4};
-        points.sort((a,b)=>Math.atan2(a.y-center.y,a.x-center.x)-Math.atan2(b.y-center.y,b.x-center.x));
+        const center={x:points.reduce((t,p)=>t+p.x,0)/4,y:points.reduce((t,p)=>t+p.y,0)/4};
+        points.sort((p,q)=>Math.atan2(p.y-center.y,p.x-center.x)-Math.atan2(q.y-center.y,q.x-center.x));
         const sides=points.map((p,i)=>distance(p,points[(i+1)%4]));
         const short=Math.min(...sides),long=Math.max(...sides);
-        if(short<Math.min(w,h)*.22||long/short>2.3||sides[0]/sides[2]<.6||sides[0]/sides[2]>1.67||sides[1]/sides[3]<.6||sides[1]/sides[3]>1.67)continue;
-        const sizes=points.map(p=>p.side),meanSize=sizes.reduce((a,b)=>a+b)/4;
-        if(Math.max(...sizes)/Math.min(...sizes)>1.9||meanSize/short<.017||meanSize/short>.057)continue;
+        if(short<Math.min(w,h)*.20||long/short>2.8||
+          sides[0]/sides[2]<.43||sides[0]/sides[2]>2.3||
+          sides[1]/sides[3]<.43||sides[1]/sides[3]>2.3)continue;
+        const sizes=points.map(p=>p.side),meanSize=sizes.reduce((t,n)=>t+n,0)/4;
+        if(Math.max(...sizes)/Math.min(...sizes)>2.6||meanSize/short<.012||meanSize/short>.11)continue;
         let area=0,convex=true;
-        for(let i=0;i<4;i++) {
+        for(let i=0;i<4;i++){
           const p=points[i],q=points[(i+1)%4],r=points[(i+2)%4];
           area+=p.x*q.y-p.y*q.x;
           if((q.x-p.x)*(r.y-q.y)-(q.y-p.y)*(r.x-q.x)<=0)convex=false;
         }
-        if(!convex)continue;
         area=Math.abs(area)/2;
-        const fit=Math.abs(meanSize/short-30/896);
-        const score=area*(1-Math.min(.6,fit*12));
-        if(!best||score>best.score)best={points,score};
+        if(!convex||area<w*h*.075)continue;
+        const relative=meanSize/short;
+        const fit=Math.abs(relative-30/896);
+        const fill=points.reduce((t,p)=>t+p.fill,0)/4;
+        const score=area*(1-Math.min(.6,fit*9))*(.7+.3*fill);
+        if(!best||score>best.score)best={points:[...points],score};
       }
-      if(!best)throw new Error('Cannot locate all four printed corner squares. Include the entire answer sheet and use a sharper, evenly lit photo.');
-      // Geometric order only. analyze() tests all rotations/reflections against
-      // printed item numbers before assigning the A/B/C/D choice coordinates.
+      if(!best)return null;
       const points=best.points;
-      const first=points.reduce((best,p,i)=>p.x+p.y<points[best].x+points[best].y?i:best,0);
-      const clockwise=Array.from({length:4},(_,i)=>points[(first+i)%4]);
-      return [clockwise[0],clockwise[1],clockwise[3],clockwise[2]].map((p,i)=>({x:p.x/scale,y:p.y/scale,name:['tl','tr','bl','br'][i]}));
+      const first=points.reduce((b,p,i)=>p.x+p.y<points[b].x+points[b].y?i:b,0);
+      const cycle=Array.from({length:4},(_,i)=>points[(first+i)%4]);
+      return [cycle[0],cycle[1],cycle[3],cycle[2]];
     },
 
     solveHomography(dstPts, srcPts) {
@@ -366,8 +423,17 @@
       }
     },
 
-    analyze(canvas, exam, answerKey=[]) {
-      const markers = this.findMarkers(canvas);
+    analyze(canvas, exam, answerKey=[], options={}) {
+      const markers = options.markers || this.findMarkers(canvas);
+      if (!Array.isArray(markers) || markers.length !== 4 || markers.some(p => !Number.isFinite(p.x)||!Number.isFinite(p.y))) {
+        throw new Error('Choose all four printed square centers before scanning.');
+      }
+      const polygonArea = Math.abs((markers[0].x*markers[1].y-markers[0].y*markers[1].x) +
+        (markers[1].x*markers[3].y-markers[1].y*markers[3].x) +
+        (markers[3].x*markers[2].y-markers[3].y*markers[2].x) +
+        (markers[2].x*markers[0].y-markers[2].y*markers[0].x))/2;
+      if (polygonArea < canvas.width*canvas.height*.045)
+        throw new Error('The chosen corners are too close together. Mark the four black square centers around the page.');
       const src = markers.map(m => [m.x, m.y]);
       const L = window.GradeDockSheet.layout(Number(exam.question_count), Number(exam.choice_count));
       const dst = L.markers.map(m => [m.x, m.y]);

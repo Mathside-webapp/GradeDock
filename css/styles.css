@@ -677,3 +677,19 @@
   .toast{max-width:100%!important;font-size:12px!important}
   .sheet-position-guide span{font-size:9px}
 }
+
+/* GradeDock v3.29: camera clarity and recoverable four-corner OMR scans. */
+.camera-stage{background:#e9eff8!important;border:1px solid #cbd5e1}
+.camera-stage #cameraVideo{background:#e9eff8!important;object-fit:contain!important}
+.camera-placeholder{background:rgba(241,245,249,.96)!important;color:#334155!important}
+.camera-stage .sheet-position-guide{box-shadow:none!important;border-color:rgba(37,99,235,.75)!important}
+.camera-stage .sheet-position-guide span{background:rgba(15,23,42,.78)!important}
+.manual-scan-panel{padding:16px 20px 18px;border-bottom:1px solid var(--line);background:#f8fbff}
+.manual-scan-head{display:grid;gap:4px;margin-bottom:12px}
+.manual-scan-head strong{font-size:14px;color:#1e40af}
+.manual-scan-head small{font-size:12px;line-height:1.5;color:#475569}
+#scanManualCanvas{display:block;width:auto;height:auto;max-width:100%;margin:0 auto;border:1px solid #cbd5e1;border-radius:9px;touch-action:none;cursor:crosshair;background:#fff;box-shadow:0 4px 12px rgba(15,23,42,.07)}
+.manual-scan-actions{display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+.manual-scan-actions button{font-size:12px}
+.manual-scan-note{display:block;margin-top:9px;line-height:1.5;font-size:11px;color:#64748b}
+@media(max-width:760px){.manual-scan-panel{padding:12px}.manual-scan-actions button{flex:1}}

@@ -11,7 +11,8 @@
     results: [],
     scan: null,
     scanImageBlob: null,
-    currentPage: 'dashboard'
+    currentPage: 'dashboard',
+    lastScanSource: null
   };
 
   let cameraAssistTimer = null;
@@ -910,10 +911,13 @@
     return { cls, exam };
   }
 
-  async function processCanvas(canvas, blob = null) {
+  async function processCanvas(canvas, blob = null, manualMarkers = null) {
     const context = requireScanContext();
     if (!context) return;
     const { cls, exam } = context;
+    state.lastScanSource = {canvas, blob};
+    let keyValidated = false;
+    $('#scanManualPanel')?.classList.add('hidden');
     try {
       $('#scanStatusText').textContent = `Reading ${classLabel(cls)} paper: registration markers and bubbles…`;
       $('#scanConfidence').textContent = 'Scanning';
@@ -922,7 +926,9 @@
       if (key.length !== Number(exam.question_count) || key.some(x => !x)) {
         throw new Error('This exam does not have a complete answer key yet. Open Exams → Set / Update Answer Key, then upload the completed Excel key before scanning.');
       }
-      const result = window.GradeDockScanner.analyze(canvas, exam, key);
+      keyValidated = true;
+      const result = window.GradeDockScanner.analyze(canvas, exam, key,
+        manualMarkers ? {markers:manualMarkers} : {});
       state.scan = { ...result, exam, key, classId: cls.id, className: classLabel(cls) };
       state.scanImageBlob = blob;
       renderScanResult();
@@ -956,8 +962,84 @@
       $('#scanResult').classList.add('hidden');
       const qualityIssue = /printed item numbers|corner (?:squares|marks)|answer circles|too tilted|matching GradeDock sheet/i.test(err.message || '');
       if (!qualityIssue) toast(err.message, 'warn');
+      // If auto-registration fails, do not discard the photo or ask the teacher
+      // to retake the same page repeatedly. Offer four-point manual alignment.
+      if (keyValidated && state.lastScanSource) showManualCornerEditor(state.lastScanSource.canvas, !manualMarkers);
       return false;
     }
+  }
+
+  // Photo recovery: four user-selected registration-square centers.
+  // Uses the existing homography and OMR validation; never guesses an answer.
+  let manualCornerPoints = [];
+  let manualCornerDrag = -1;
+  const cornerNames = ['TOP LEFT','TOP RIGHT','BOTTOM LEFT','BOTTOM RIGHT'];
+  function showManualCornerEditor(source, reset = true) {
+    if (!source?.width || !source?.height) return;
+    const panel=$('#scanManualPanel'), preview=$('#scanManualCanvas');
+    if (!panel || !preview) return;
+    panel.classList.remove('hidden');
+    if (reset) manualCornerPoints = [];
+    const scale=Math.min(1, 650/Math.max(source.width,source.height));
+    preview.width=Math.max(1,Math.round(source.width*scale));
+    preview.height=Math.max(1,Math.round(source.height*scale));
+    function redraw(){
+      const ctx=preview.getContext('2d');
+      ctx.clearRect(0,0,preview.width,preview.height);
+      ctx.drawImage(source,0,0,preview.width,preview.height);
+      if(manualCornerPoints.length===4){
+        const p=manualCornerPoints;
+        ctx.beginPath();ctx.moveTo(p[0].x,p[0].y);ctx.lineTo(p[1].x,p[1].y);
+        ctx.lineTo(p[3].x,p[3].y);ctx.lineTo(p[2].x,p[2].y);ctx.closePath();
+        ctx.strokeStyle='#22c55e';ctx.lineWidth=2.5;ctx.stroke();
+      }
+      manualCornerPoints.forEach((pt,i)=>{
+        ctx.beginPath();ctx.arc(pt.x,pt.y,12,0,Math.PI*2);
+        ctx.fillStyle='#2563eb';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2.2;ctx.stroke();
+        ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.font='bold 13px sans-serif';ctx.fillText(String(i+1),pt.x,pt.y);
+      });
+      const hint=$('#scanManualHint'), apply=$('#applyScanCornersBtn');
+      if(hint)hint.textContent=manualCornerPoints.length<4
+        ? `Tap the center of the ${cornerNames[manualCornerPoints.length]} black square (${manualCornerPoints.length+1} of 4).`
+        : 'Four corners selected. Drag any numbered point to fine-tune, then scan.';
+      if(apply)apply.disabled=manualCornerPoints.length!==4;
+    }
+    const getPoint=e=>{
+      const box=preview.getBoundingClientRect();
+      if(!box.width||!box.height)return null;
+      return {x:Math.min(preview.width,Math.max(0,(e.clientX-box.left)*preview.width/box.width)),
+        y:Math.min(preview.height,Math.max(0,(e.clientY-box.top)*preview.height/box.height))};
+    };
+    preview.onpointerdown=e=>{
+      const pt=getPoint(e);if(!pt)return;
+      manualCornerDrag=manualCornerPoints.findIndex(p=>Math.hypot(p.x-pt.x,p.y-pt.y)<22);
+      if(manualCornerDrag<0 && manualCornerPoints.length<4){
+        manualCornerDrag=manualCornerPoints.length;
+        manualCornerPoints.push(pt);
+      } else if(manualCornerDrag>=0) manualCornerPoints[manualCornerDrag]=pt;
+      else return;
+      preview.setPointerCapture?.(e.pointerId);
+      redraw();
+    };
+    preview.onpointermove=e=>{
+      if(manualCornerDrag<0)return;
+      const pt=getPoint(e);if(!pt)return;
+      manualCornerPoints[manualCornerDrag]=pt;redraw();
+    };
+    preview.onpointerup=preview.onpointercancel=()=>{manualCornerDrag=-1;};
+    $('#resetScanCornersBtn').onclick=()=>{manualCornerPoints=[];redraw();};
+    $('#applyScanCornersBtn').onclick=async()=>{
+      if(manualCornerPoints.length!==4 || !state.lastScanSource)return;
+      const btn=$('#applyScanCornersBtn');btn.disabled=true;
+      btn.textContent='Scanning…';
+      try {
+        const k=1/scale;
+        const markers=manualCornerPoints.map((p,i)=>({x:p.x*k,y:p.y*k,name:['tl','tr','bl','br'][i]}));
+        await processCanvas(state.lastScanSource.canvas,state.lastScanSource.blob,markers);
+      } finally {btn.textContent='⌗ Scan using corners';}
+    };
+    redraw();
   }
 
   function renderScanResult() {
@@ -1581,7 +1663,7 @@
   function startCameraAssist() {
     stopCameraAssist(false);
     setCameraAssistStatus({ state: 'starting', title: 'Position the answer sheet', text: 'Fit all four black corner squares inside the guide.' }, true);
-    cameraAssistTimer = setInterval(updateCameraAssist, 700);
+    cameraAssistTimer = setInterval(updateCameraAssist, 1300);
   }
 
   function switchScanMode(mode) {
@@ -1746,14 +1828,20 @@
 
     $('#captureBtn').onclick = async () => {
       if (!requireScanContext()) return;
+      const btn=$('#captureBtn');
+      btn.disabled=true;btn.textContent='Checking paper…';
       stopCameraAssist(false);
-      setCameraAssistStatus({ state: 'reading', title: 'Reading answer sheet…', text: 'Keep the paper steady while GradeDock checks the markers and bubbles.' }, true);
-      const captured = await window.GradeDockScanner.captureBestFrame($('#cameraVideo'), $('#captureCanvas'));
-      const canvas = captured.canvas;
-      const blob = captured.blob;
-      const ok = await processCanvas(canvas, blob);
-      if (ok) stopCameraAssist();
-      else if (window.GradeDockScanner?.stream) startCameraAssist();
+      setCameraAssistStatus({ state: 'reading', title: 'Reading answer sheet…', text: 'Checking alignment and answers.' }, true);
+      try {
+        const captured=await window.GradeDockScanner.captureBestFrame($('#cameraVideo'),$('#captureCanvas'));
+        const ok=await processCanvas(captured.canvas,captured.blob);
+        if(ok) stopCameraAssist();
+        else if(window.GradeDockScanner?.stream) startCameraAssist();
+      } catch(err) {
+        $('#scanStatusText').textContent=err.message;
+        toast(err.message,'warn');
+        if(window.GradeDockScanner?.stream)startCameraAssist();
+      } finally {btn.disabled=!window.GradeDockScanner?.stream;btn.textContent='📸 Capture & check';}
     };
 
     $('#cameraFallbackFile').onchange = async e => {
@@ -1774,9 +1862,11 @@
       const file = e.target.files[0];
       if (!file) return;
       if (!requireScanContext()) { e.target.value = ''; return; }
-      const canvas = await window.GradeDockScanner.fileToCanvas(file, $('#captureCanvas'));
-      processCanvas(canvas, file);
-      e.target.value = '';
+      try {
+        const canvas=await window.GradeDockScanner.fileToCanvas(file,$('#captureCanvas'));
+        await processCanvas(canvas,file);
+      } catch(err) {$('#scanStatusText').textContent=err.message;toast(err.message,'warn');}
+      e.target.value='';
     };
 
     $('#dropZone').ondragover = e => { e.preventDefault(); e.currentTarget.classList.add('drag'); };
@@ -1786,8 +1876,10 @@
       e.currentTarget.classList.remove('drag');
       const file = e.dataTransfer.files[0];
       if (!file || !requireScanContext()) return;
-      const canvas = await window.GradeDockScanner.fileToCanvas(file, $('#captureCanvas'));
-      processCanvas(canvas, file);
+      try {
+        const canvas=await window.GradeDockScanner.fileToCanvas(file,$('#captureCanvas'));
+        await processCanvas(canvas,file);
+      } catch(err) {$('#scanStatusText').textContent=err.message;toast(err.message,'warn');}
     };
 
     $('#profileForm').onsubmit = async e => {
