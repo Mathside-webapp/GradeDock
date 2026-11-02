@@ -144,22 +144,14 @@
         return { state: 'warn', ready: false, title: 'Paper is partly covered', text: 'Keep fingers and dark objects away from the answer sheet.', mean, sharpness };
       }
 
-      try {
-        const markers = this.findMarkers(canvas);
-        return {
-          state: 'ready', ready: true,
-          title: 'Good to scan',
-          text: 'Paper is visible and focused. Tap Capture & check.',
-          markers, mean, sharpness, glare
-        };
-      } catch (err) {
-        return {
-          state: 'searching', ready: false,
-          title: 'Move closer or try a photo',
-          text: 'Keep all four corner squares visible. You can also Capture & check, then adjust corners manually.',
-          mean, sharpness, reason: err?.message || ''
-        };
-      }
+      // Do not continuously perform expensive registration detection on every
+      // video frame. Recognition happens once when Capture & check is tapped.
+      return {
+        state: 'ready', ready: true,
+        title: 'Camera ready',
+        text: 'Fit the entire paper in the picture, then tap Capture & check.',
+        mean, sharpness, glare
+      };
     },
 
     capture(video, canvas) {
@@ -210,8 +202,8 @@
     // GradeDock uses four printed registration squares, not just page edges.
     // Adaptive local contrast handles shadows and nonwhite desks without OpenCV/WASM.
     // Analyse a bounded copy so live mobile scanning stays responsive.
-    findMarkers(canvas) {
-      const scale=Math.min(1,960/Math.max(canvas.width,canvas.height));
+    findMarkers(canvas, maxSize = 960) {
+      const scale=Math.min(1,maxSize/Math.max(canvas.width,canvas.height));
       const w=Math.max(1,Math.round(canvas.width*scale));
       const h=Math.max(1,Math.round(canvas.height*scale));
       const temp=document.createElement('canvas');temp.width=w;temp.height=h;
@@ -278,7 +270,9 @@
           if(best)return best.map((p,i)=>({x:p.x/scale,y:p.y/scale,name:['tl','tr','bl','br'][i]}));
         }
       }
-      throw new Error('Four corner squares not detected. Retake with the whole page visible, or choose Adjust corners to mark them yourself.');
+      // Make one higher-resolution attempt only when automatic registration fails.
+      if (maxSize === 960 && Math.max(canvas.width,canvas.height) > 1100) return this.findMarkers(canvas, 1440);
+      throw new Error('Could not align this photo automatically. Keep the whole answer sheet in view, add soft lighting, and try Capture & check again or Take photo instead.');
     },
 
     _chooseMarkerQuad(candidates,w,h) {
@@ -426,14 +420,14 @@
     analyze(canvas, exam, answerKey=[], options={}) {
       const markers = options.markers || this.findMarkers(canvas);
       if (!Array.isArray(markers) || markers.length !== 4 || markers.some(p => !Number.isFinite(p.x)||!Number.isFinite(p.y))) {
-        throw new Error('Choose all four printed square centers before scanning.');
+        throw new Error('The printed sheet could not be aligned. Try again with the entire paper visible.');
       }
       const polygonArea = Math.abs((markers[0].x*markers[1].y-markers[0].y*markers[1].x) +
         (markers[1].x*markers[3].y-markers[1].y*markers[3].x) +
         (markers[3].x*markers[2].y-markers[3].y*markers[2].x) +
         (markers[2].x*markers[0].y-markers[2].y*markers[0].x))/2;
       if (polygonArea < canvas.width*canvas.height*.045)
-        throw new Error('The chosen corners are too close together. Mark the four black square centers around the page.');
+        throw new Error('The paper appears too far away or partly outside the photo. Move closer while keeping the entire page visible.');
       const src = markers.map(m => [m.x, m.y]);
       const L = window.GradeDockSheet.layout(Number(exam.question_count), Number(exam.choice_count));
       const dst = L.markers.map(m => [m.x, m.y]);

@@ -11,8 +11,7 @@
     results: [],
     scan: null,
     scanImageBlob: null,
-    currentPage: 'dashboard',
-    lastScanSource: null
+    currentPage: 'dashboard'
   };
 
   let cameraAssistTimer = null;
@@ -911,13 +910,10 @@
     return { cls, exam };
   }
 
-  async function processCanvas(canvas, blob = null, manualMarkers = null) {
+  async function processCanvas(canvas, blob = null) {
     const context = requireScanContext();
     if (!context) return;
     const { cls, exam } = context;
-    state.lastScanSource = {canvas, blob};
-    let keyValidated = false;
-    $('#scanManualPanel')?.classList.add('hidden');
     try {
       $('#scanStatusText').textContent = `Reading ${classLabel(cls)} paper: registration markers and bubbles…`;
       $('#scanConfidence').textContent = 'Scanning';
@@ -926,9 +922,7 @@
       if (key.length !== Number(exam.question_count) || key.some(x => !x)) {
         throw new Error('This exam does not have a complete answer key yet. Open Exams → Set / Update Answer Key, then upload the completed Excel key before scanning.');
       }
-      keyValidated = true;
-      const result = window.GradeDockScanner.analyze(canvas, exam, key,
-        manualMarkers ? {markers:manualMarkers} : {});
+      const result = window.GradeDockScanner.analyze(canvas, exam, key);
       state.scan = { ...result, exam, key, classId: cls.id, className: classLabel(cls) };
       state.scanImageBlob = blob;
       renderScanResult();
@@ -956,90 +950,15 @@
       $('#scanConfidence').textContent = 'Needs retake';
       $('#scanConfidence').className = 'badge warn';
       $('#scanStatusText').textContent = err.message;
+      window.GradeDockCameraView?.close();
       // Scanning failures are already shown in the recognition preview. Avoid a
       // second oversized error popup on top of the live camera.
       $('#scanEmpty').classList.remove('hidden');
       $('#scanResult').classList.add('hidden');
       const qualityIssue = /printed item numbers|corner (?:squares|marks)|answer circles|too tilted|matching GradeDock sheet/i.test(err.message || '');
       if (!qualityIssue) toast(err.message, 'warn');
-      // If auto-registration fails, do not discard the photo or ask the teacher
-      // to retake the same page repeatedly. Offer four-point manual alignment.
-      if (keyValidated && state.lastScanSource) showManualCornerEditor(state.lastScanSource.canvas, !manualMarkers);
       return false;
     }
-  }
-
-  // Photo recovery: four user-selected registration-square centers.
-  // Uses the existing homography and OMR validation; never guesses an answer.
-  let manualCornerPoints = [];
-  let manualCornerDrag = -1;
-  const cornerNames = ['TOP LEFT','TOP RIGHT','BOTTOM LEFT','BOTTOM RIGHT'];
-  function showManualCornerEditor(source, reset = true) {
-    if (!source?.width || !source?.height) return;
-    const panel=$('#scanManualPanel'), preview=$('#scanManualCanvas');
-    if (!panel || !preview) return;
-    panel.classList.remove('hidden');
-    if (reset) manualCornerPoints = [];
-    const scale=Math.min(1, 650/Math.max(source.width,source.height));
-    preview.width=Math.max(1,Math.round(source.width*scale));
-    preview.height=Math.max(1,Math.round(source.height*scale));
-    function redraw(){
-      const ctx=preview.getContext('2d');
-      ctx.clearRect(0,0,preview.width,preview.height);
-      ctx.drawImage(source,0,0,preview.width,preview.height);
-      if(manualCornerPoints.length===4){
-        const p=manualCornerPoints;
-        ctx.beginPath();ctx.moveTo(p[0].x,p[0].y);ctx.lineTo(p[1].x,p[1].y);
-        ctx.lineTo(p[3].x,p[3].y);ctx.lineTo(p[2].x,p[2].y);ctx.closePath();
-        ctx.strokeStyle='#22c55e';ctx.lineWidth=2.5;ctx.stroke();
-      }
-      manualCornerPoints.forEach((pt,i)=>{
-        ctx.beginPath();ctx.arc(pt.x,pt.y,12,0,Math.PI*2);
-        ctx.fillStyle='#2563eb';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2.2;ctx.stroke();
-        ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.font='bold 13px sans-serif';ctx.fillText(String(i+1),pt.x,pt.y);
-      });
-      const hint=$('#scanManualHint'), apply=$('#applyScanCornersBtn');
-      if(hint)hint.textContent=manualCornerPoints.length<4
-        ? `Tap the center of the ${cornerNames[manualCornerPoints.length]} black square (${manualCornerPoints.length+1} of 4).`
-        : 'Four corners selected. Drag any numbered point to fine-tune, then scan.';
-      if(apply)apply.disabled=manualCornerPoints.length!==4;
-    }
-    const getPoint=e=>{
-      const box=preview.getBoundingClientRect();
-      if(!box.width||!box.height)return null;
-      return {x:Math.min(preview.width,Math.max(0,(e.clientX-box.left)*preview.width/box.width)),
-        y:Math.min(preview.height,Math.max(0,(e.clientY-box.top)*preview.height/box.height))};
-    };
-    preview.onpointerdown=e=>{
-      const pt=getPoint(e);if(!pt)return;
-      manualCornerDrag=manualCornerPoints.findIndex(p=>Math.hypot(p.x-pt.x,p.y-pt.y)<22);
-      if(manualCornerDrag<0 && manualCornerPoints.length<4){
-        manualCornerDrag=manualCornerPoints.length;
-        manualCornerPoints.push(pt);
-      } else if(manualCornerDrag>=0) manualCornerPoints[manualCornerDrag]=pt;
-      else return;
-      preview.setPointerCapture?.(e.pointerId);
-      redraw();
-    };
-    preview.onpointermove=e=>{
-      if(manualCornerDrag<0)return;
-      const pt=getPoint(e);if(!pt)return;
-      manualCornerPoints[manualCornerDrag]=pt;redraw();
-    };
-    preview.onpointerup=preview.onpointercancel=()=>{manualCornerDrag=-1;};
-    $('#resetScanCornersBtn').onclick=()=>{manualCornerPoints=[];redraw();};
-    $('#applyScanCornersBtn').onclick=async()=>{
-      if(manualCornerPoints.length!==4 || !state.lastScanSource)return;
-      const btn=$('#applyScanCornersBtn');btn.disabled=true;
-      btn.textContent='Scanning…';
-      try {
-        const k=1/scale;
-        const markers=manualCornerPoints.map((p,i)=>({x:p.x*k,y:p.y*k,name:['tl','tr','bl','br'][i]}));
-        await processCanvas(state.lastScanSource.canvas,state.lastScanSource.blob,markers);
-      } finally {btn.textContent='⌗ Scan using corners';}
-    };
-    redraw();
   }
 
   function renderScanResult() {
@@ -1646,7 +1565,7 @@
       try {
         status = window.GradeDockScanner.inspectFrame(video);
       } catch (_) {
-        status = { state: 'searching', title: 'Looking for answer sheet…', text: 'Show the full paper and all four corner marks.' };
+        status = { state: 'searching', title: 'Looking for answer sheet…', text: 'Keep the full answer sheet visible and tap Capture & check.' };
       }
       // Two consistent checks stop brightness/focus jitter flashing warnings.
       const key = `${status.state}:${status.title}`;
@@ -1662,7 +1581,7 @@
 
   function startCameraAssist() {
     stopCameraAssist(false);
-    setCameraAssistStatus({ state: 'starting', title: 'Position the answer sheet', text: 'Fit all four black corner squares inside the guide.' }, true);
+    setCameraAssistStatus({ state: 'starting', title: 'Position the answer sheet', text: 'Keep the entire sheet visible and hold still.' }, true);
     cameraAssistTimer = setInterval(updateCameraAssist, 1300);
   }
 

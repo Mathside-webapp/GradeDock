@@ -14,7 +14,7 @@
   <link rel="icon" href="assets/favicon-32.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="css/styles.css?v=3.29" />
+  <link rel="stylesheet" href="css/styles.css?v=3.30" />
   <link rel="stylesheet" href="css/pwa.css?v=1" />
 </head>
 <body>
@@ -115,10 +115,10 @@
             <div class="scan-context-note">Results from this scan will be filed under the selected section.</div>
             <div class="scan-mode-tabs"><button id="cameraTab" class="scan-tab active">📷 Use camera</button><button id="uploadTab" class="scan-tab">🖼 Upload image</button></div>
             <div id="cameraMode" class="scan-mode active">
+              <div class="camera-fullview-head"><strong>Camera scanner</strong><button id="closeFullViewBtn" type="button" class="btn btn-soft" aria-label="Exit full camera view">✕ Close</button></div>
               <div class="camera-stage">
                 <video id="cameraVideo" playsinline autoplay muted></video>
-                <div class="sheet-position-guide" aria-hidden="true"><span>Fit all 4 black corner marks</span></div>
-                <div class="camera-placeholder" id="cameraPlaceholder"><span>📷</span><strong>Camera is off</strong><small>Select a section and exam, then start the camera. GradeDock will tell you when the image is ready to scan.</small></div>
+                <div class="camera-placeholder" id="cameraPlaceholder"><span>📷</span><strong>Camera is off</strong><small>Select a section and exam, then start the camera. Use Full view for a larger preview.</small></div>
                 <div id="cameraScanAssist" class="camera-scan-assist hidden" role="status" aria-live="polite">
                   <span class="camera-scan-assist-label">NOT READY</span>
                   <strong id="cameraScanAssistTitle">Position the answer sheet</strong>
@@ -126,7 +126,7 @@
                   <span class="camera-scan-assist-icon" id="cameraScanAssistIcon" aria-hidden="true">!</span>
                 </div>
               </div>
-              <div class="camera-actions"><button id="startCameraBtn" class="btn btn-soft">Start camera</button><button id="switchCameraBtn" class="btn btn-soft">Switch camera</button><button id="cameraOrientationBtn" class="btn btn-soft" type="button" aria-pressed="false">↔ Landscape</button><button id="captureBtn" class="btn btn-primary" disabled>📸 Capture & check</button></div>
+              <div class="camera-actions"><button id="startCameraBtn" class="btn btn-soft">Start camera</button><button id="switchCameraBtn" class="btn btn-soft">Switch camera</button><button id="cameraOrientationBtn" class="btn btn-soft" type="button" aria-pressed="false">↔ Landscape</button><button id="cameraFullViewBtn" class="btn btn-soft" type="button" aria-pressed="false">⛶ Full view</button><button id="captureBtn" class="btn btn-primary" disabled>📸 Capture & check</button></div>
               <div class="camera-fallback"><span id="cameraHelpText">If live camera is blocked, you can take a photo using your device camera instead.</span><label class="btn btn-soft btn-compact" for="cameraFallbackFile">Take photo instead</label><input id="cameraFallbackFile" type="file" accept="image/*" capture="environment" hidden /></div>
             </div>
             <div id="uploadMode" class="scan-mode">
@@ -136,12 +136,6 @@
           </section>
           <section class="panel scan-preview-panel">
             <div class="panel-head"><div><h3>Recognition preview</h3><p id="scanStatusText">Choose a section and exam, then capture or upload a sheet.</p></div><span id="scanConfidence" class="badge neutral">Waiting</span></div>
-            <div id="scanManualPanel" class="manual-scan-panel hidden">
-              <div class="manual-scan-head"><strong>Adjust the paper corners</strong><small id="scanManualHint">Tap the center of each printed black square: top left, top right, bottom left, bottom right.</small></div>
-              <canvas id="scanManualCanvas" aria-label="Answer-sheet photograph: tap four corner squares in order"></canvas>
-              <div class="manual-scan-actions"><button type="button" id="resetScanCornersBtn" class="btn btn-soft btn-compact">↻ Reset corners</button><button type="button" id="applyScanCornersBtn" class="btn btn-primary btn-compact" disabled>⌗ Scan using corners</button></div>
-              <small class="manual-scan-note">You can drag an existing numbered point to fix its position. GradeDock will still ask you to review uncertain answers.</small>
-            </div>
             <div id="scanEmpty" class="empty-state tall"><span>⌗</span><h4>No paper scanned yet</h4><p>Your detected answers and score will appear here.</p></div>
             <div id="scanResult" class="hidden"></div>
           </section>
@@ -209,11 +203,12 @@
   <script src="js/config.js"></script>
   <script src="js/sheet.js"></script>
   <script src="js/excel.js"></script>
-  <script src="js/scanner.js?v=3.29"></script>
+  <script src="js/scanner.js?v=3.30"></script>
   <script src="js/store.js?v=3.27"></script>
   <script src="js/roster-import.js?v=4"></script>
   <script src="js/item-analysis.js?v=1"></script>
-  <script src="js/app.js?v=3.29"></script>
+  <script src="js/app.js?v=3.30"></script>
+  <script src="js/camera-fullview.js?v=3.30"></script>
   <script src="js/ui-extras.js?v=2"></script>
   <script src="js/pwa.js?v=1"></script>
 </body>

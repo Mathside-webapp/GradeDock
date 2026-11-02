@@ -693,3 +693,58 @@
 .manual-scan-actions button{font-size:12px}
 .manual-scan-note{display:block;margin-top:9px;line-height:1.5;font-size:11px;color:#64748b}
 @media(max-width:760px){.manual-scan-panel{padding:12px}.manual-scan-actions button{flex:1}}
+
+/* GradeDock v3.30 — genuine viewport-filling camera with accessible exit control. */
+.camera-fullview-head{display:none}
+.camera-stage .sheet-position-guide,.camera-guide,.camera-guide-help{display:none!important}
+.camera-actions #cameraFullViewBtn{white-space:nowrap}
+.camera-actions{display:flex!important;flex-wrap:wrap!important;gap:8px!important}
+.camera-actions .btn{flex:1 1 auto!important;min-height:40px}
+.camera-actions #captureBtn{flex:1 1 100%!important;min-height:51px!important;font-size:14px!important;order:10!important}
+.camera-stage{width:100%!important}
+body.gd-camera-fullview-active{overflow:hidden!important;overscroll-behavior:none}
+#cameraMode.is-fullview{
+  display:flex!important;position:fixed!important;z-index:10500!important;
+  inset:0!important;inset:0 0 0 0!important;width:100vw!important;
+  height:100vh!important;height:100dvh!important;
+  padding:calc(10px + env(safe-area-inset-top,0px))
+          calc(12px + env(safe-area-inset-right,0px))
+          calc(10px + env(safe-area-inset-bottom,0px))
+          calc(12px + env(safe-area-inset-left,0px))!important;
+  margin:0!important;background:#0b1220!important;color:#fff!important;
+  flex-direction:column!important;gap:9px!important;overflow:hidden!important;
+}
+#cameraMode.is-fullview .camera-fullview-head{display:flex!important;justify-content:space-between;align-items:center;gap:12px;flex:0 0 auto}
+#cameraMode.is-fullview .camera-fullview-head strong{font-size:15px;font-weight:800;color:#fff}
+#cameraMode.is-fullview #closeFullViewBtn{min-height:38px;background:#273244!important;color:#fff!important}
+#cameraMode.is-fullview .camera-stage{
+  position:relative!important;flex:1 1 auto!important;min-height:0!important;
+  height:auto!important;max-height:none!important;width:100%!important;
+  aspect-ratio:auto!important;border-radius:11px!important;
+  background:#172338!important;border:1px solid #38465c!important;
+}
+#cameraMode.is-fullview .camera-stage #cameraVideo{
+  position:absolute!important;inset:0!important;width:100%!important;height:100%!important;
+  object-fit:contain!important;object-position:center!important;background:#101827!important;
+}
+#cameraMode.is-fullview .camera-actions{
+  display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:7px!important;margin:0!important;padding:0!important;flex:0 0 auto!important;
+}
+#cameraMode.is-fullview .camera-actions .btn{
+  display:block!important;grid-row:1!important;grid-column:auto!important;
+  min-width:0!important;min-height:42px!important;
+  margin:0!important;padding:7px 4px!important;font-size:11px!important;
+  white-space:normal!important;color:#27344b;
+}
+#cameraMode.is-fullview .camera-actions #captureBtn{
+  grid-row:2!important;grid-column:1/-1!important;
+  order:10!important;min-height:60px!important;font-size:17px!important;color:#fff!important;
+}
+#cameraMode.is-fullview .camera-fallback{display:none!important}
+#cameraMode.is-fullview .camera-placeholder{background:#172338!important;color:#fff!important}
+#cameraMode.is-fullview .camera-scan-assist{max-height:90px!important}
+@media(max-width:480px){
+  #cameraMode.is-fullview .camera-actions .btn{font-size:10px!important;padding:7px 2px!important}
+  #cameraMode.is-fullview .camera-actions #captureBtn{font-size:15px!important}
+}

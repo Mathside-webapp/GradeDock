@@ -2,13 +2,13 @@
    Cache only static app files; never intercept Supabase/API or third-party requests.
    Navigation is network-first, with an informational offline fallback.
 */
-const CACHE_NAME = 'gradedock-shell-v3-20261102-scanner';
+const CACHE_NAME = 'gradedock-shell-v3-20261102-fullview';
 const CACHE_PREFIX = 'gradedock-shell-';
 const SHELL = [
   './offline.html', './manifest.webmanifest', './assets/favicon-32.png',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
-  './icons/maskable-512.png', './css/styles.css?v=3.29', './css/pwa.css?v=1',
-  './js/pwa.js?v=1', './js/item-analysis.js?v=1', './js/store.js?v=3.27', './js/scanner.js?v=3.29', './js/app.js?v=3.29'
+  './icons/maskable-512.png', './css/styles.css?v=3.30', './css/pwa.css?v=1',
+  './js/pwa.js?v=1', './js/item-analysis.js?v=1', './js/store.js?v=3.27', './js/scanner.js?v=3.30', './js/app.js?v=3.30', './js/camera-fullview.js?v=3.30'
 ];
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
