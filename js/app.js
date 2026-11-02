@@ -947,7 +947,6 @@
     drawScanPhotoPreview();
     $('#scanPhotoArea').classList.remove('hidden','is-success');
     $('#scanPhotoTitle').textContent = 'Photo ready for scanning';
-    $('#scanPhotoMeta').textContent = `${canvas.width} × ${canvas.height} pixels`;
     $('#scanIssuePanel').classList.add('hidden');
     $('#scanEmpty').classList.add('hidden');
     $('#scanResult').classList.add('hidden');

@@ -1,0 +1,1 @@
+GradeDock v3.34 adds validated preview toggle metadata and cache refresh for the adaptive line-darkening update. Original photos are preserved, enhanced scans are used for OMR, and teacher review remains required for unclear grades. No SQL or Supabase changes.
