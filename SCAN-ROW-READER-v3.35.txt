@@ -1,0 +1,9 @@
+GradeDock v3.35: Row-by-row answer recognition
+
+- Stops discarding the entire paper when less than 70% of faint bubble outlines align.
+- Maps each numbered item row from GradeDock's printed template and assesses A-D/E bubbles independently. The printed numbers follow the generated sequence; unreliable OCR of tiny numerals is NOT used to assign scores.
+- Uses enhanced pixels only for finding printed outlines, and original camera pixels for selecting which bubble is actually filled.
+- If an individual row is poorly aligned, its possible letter is displayed but must be individually checked; no guessed grade is silently saved.
+- Bulk confirmation is disabled for scans with unreliable row geometry.
+- Keeps the full-view camera, photo previews, original/enhanced switch, and Supabase configuration. No SQL changes.
+- Real phone camera photos still require classroom verification.

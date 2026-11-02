@@ -502,6 +502,10 @@
       const ctx = enhanced.getContext('2d', { willReadFrequently: true });
       const image = ctx.getImageData(0, 0, enhanced.width, enhanced.height);
       const pix = image.data;
+      // The enhanced copy reveals faint outlines, but its local-contrast filter
+      // also exaggerates JPEG halos. Never use it for choosing a filled letter.
+      const rawPix = canvas.getContext('2d', { willReadFrequently: true })
+        .getImageData(0, 0, canvas.width, canvas.height).data;
 
       // Registration is geometric. Never require OCR of tiny item numbers:
       // even GradeDock-generated sheets lose that detail in ordinary phone photos.
@@ -522,7 +526,7 @@
       // Bilinear sampling is noticeably more stable than rounding to one source
       // pixel when a phone photo is skewed. This reduces false choice shifts near
       // bubble edges after perspective correction.
-      const grayAtSource = (x, y) => {
+      const grayAtSource = (x, y, pixelData = pix) => {
         x = clamp(x, 0, canvas.width - 1);
         y = clamp(y, 0, canvas.height - 1);
         const x0 = Math.floor(x), y0 = Math.floor(y);
@@ -530,7 +534,7 @@
         const tx = x - x0, ty = y - y0;
         const g = (xx, yy) => {
           const i = (yy * canvas.width + xx) * 4;
-          return pix[i] * .299 + pix[i + 1] * .587 + pix[i + 2] * .114;
+          return pixelData[i] * .299 + pixelData[i + 1] * .587 + pixelData[i + 2] * .114;
         };
         const a = g(x0,y0) * (1-tx) + g(x1,y0) * tx;
         const b = g(x0,y1) * (1-tx) + g(x1,y1) * tx;
@@ -669,14 +673,16 @@
           bubbleOffsets.set(bubble,fit);
         }
       }
-      if (alignedRows < Math.ceil(L.items.length * .70)) {
-        throw new Error('GradeDock found the printed corner marks, but the bubble-circle outlines could not be aligned confidently. Try uploading the original full-resolution photo, or retake it with the entire page sharp and evenly lit.');
-      }
+      // Scan each printed number's row independently. The expected number is
+      // known from GradeDock's own sheet layout; OCR of 8px digits is not an
+      // accuracy requirement. Even if only a few outlines are detectable,
+      // return the other rows for review rather than throwing away the sheet.
+      const layoutUncertain = alignedRows < Math.ceil(L.items.length * .70);
 
       const bubbleInk = (cx, cy, offset) => {
         const sample = (dx,dy) => {
           const p = mapCanonical(cx + offset.x + dx, cy + offset.y + dy);
-          return grayAtSource(p.x,p.y);
+          return grayAtSource(p.x, p.y, rawPix);
         };
         const bg = [];
         for (let k=0;k<32;k++) {
@@ -735,10 +741,14 @@
         } else if (best.score>=markThreshold) {
           state='low';
         }
-        if (rowOffsets.get(row.item.number).score <= .10 || orientationAmbiguous) {
-          // An uncertain physical orientation must never be automatically scored.
-          // Offer the teacher a review rather than guessing by the answer key.
-          answer=''; state='low';
+        const alignmentConfidence = rowOffsets.get(row.item.number).score;
+        if (alignmentConfidence <= .10 || orientationAmbiguous) {
+          // Keep a tentative filled A-D letter if only this row's thin printed
+          // outline was faint. It is NEVER automatically scored: the teacher
+          // must confirm the numbered row manually. If page orientation is
+          // ambiguous, even a tentative letter is unsafe.
+          if (orientationAmbiguous) answer = '';
+          state = 'low';
         }
         if (state!=='ok') uncertain++;
 
@@ -747,6 +757,8 @@
         if (isCorrect) correct++;
         detected.push({
           question: row.item.number,
+          rowConfidence: Math.round(Math.max(0, Math.min(100, alignmentConfidence * 100))),
+          tentative: state === 'low',
           answer,
           key,
           isCorrect,
@@ -774,6 +786,9 @@
         orientationTransform,
         cameraMirrorCorrected: orientationTransform !== 'identity',
         orientationAmbiguous,
+        readingMode: 'numbered-rows',
+        layoutUncertain,
+        requiresIndividualReview: layoutUncertain || orientationAmbiguous || detected.some(row => row.rowConfidence <= 10),
         orientationScores: { normal: normalOrientationScore, mirrored: mirroredOrientationScore },
         alignment: { alignedRows, totalRows: L.items.length },
         sensitivity: {
