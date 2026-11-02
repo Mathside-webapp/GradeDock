@@ -11,6 +11,7 @@
     results: [],
     scan: null,
     scanImageBlob: null,
+    lastScanSource: null,
     currentPage: 'dashboard'
   };
 
@@ -910,53 +911,99 @@
     return { cls, exam };
   }
 
-  async function processCanvas(canvas, blob = null) {
-    const context = requireScanContext();
-    if (!context) return;
-    const { cls, exam } = context;
+  function scanPreviewPanel() { return $('.scan-preview-panel'); }
+
+  function showCapturedPhoto(canvas, blob) {
+    if (!canvas?.width || !canvas?.height) throw new Error('This picture is empty. Try taking another photo.');
+    // Keep a separate copy: the hidden camera canvas is reused for later captures.
+    const saved = document.createElement('canvas');
+    saved.width = canvas.width;
+    saved.height = canvas.height;
+    saved.getContext('2d').drawImage(canvas, 0, 0);
+    state.lastScanSource = {canvas:saved, blob};
+    const preview=$('#scanPhotoPreview');
+    const scale=Math.min(1,580/Math.max(canvas.width,canvas.height));
+    preview.width=Math.max(1,Math.round(canvas.width*scale));
+    preview.height=Math.max(1,Math.round(canvas.height*scale));
+    preview.getContext('2d').drawImage(saved,0,0,preview.width,preview.height);
+    $('#scanPhotoArea').classList.remove('hidden','is-success');
+    $('#scanPhotoTitle').textContent = 'Photo received';
+    $('#scanPhotoMeta').textContent = `${canvas.width} × ${canvas.height} pixels`;
+    $('#scanIssuePanel').classList.add('hidden');
+    $('#scanEmpty').classList.add('hidden');
+    $('#scanResult').classList.add('hidden');
+    $('#scanStatusText').textContent = 'Photo loaded. Checking the selected exam and reading the bubbles…';
+    $('#scanConfidence').textContent = 'Reading…';
+    $('#scanConfidence').className = 'badge neutral';
+  }
+
+  function showScanIssue(error) {
+    const message=String(error?.message||error||'Unknown scanning error.');
+    const keyProblem=/answer key|exam_keys|exam key|complete key/i.test(message);
+    const paperProblem=/align|corner|item number|circle|marker|tilt|match|paper|sheet orientation/i.test(message);
+    $('#scanIssueTitle').textContent = keyProblem ? 'The exam answer key needs attention' : paperProblem ? 'Photo received, but answers could not be detected' : 'Photo could not be scored';
+    $('#scanIssueText').textContent=message;
+    $('#scanIssueHint').textContent=keyProblem
+      ? 'Open Exams → Set / Update Answer Key. Save an answer for every item, then retry this same photo.'
+      : paperProblem
+        ? 'Use a GradeDock-generated answer sheet for the selected exam. Keep the whole paper flat, sharp, and visible. The picture stays here so you can see what was captured.'
+        : 'Check your selected section and exam, then try the same photo again. You can also select a new picture.';
+    $('#scanIssuePanel').classList.remove('hidden');
+    $('#editScanKeyBtn').classList.toggle('hidden',!keyProblem || !$('#scanExam').value);
+    $('#retryPhotoBtn').disabled = !state.lastScanSource;
+    $('#scanEmpty').classList.toggle('hidden',Boolean(state.lastScanSource));
+    $('#scanResult').classList.add('hidden');
+    $('#scanConfidence').textContent = 'Needs attention';
+    $('#scanConfidence').className = 'badge warn';
+    $('#scanStatusText').textContent = 'Picture received. ' + (keyProblem ? 'Check exam answer key.' : 'See the reason below.');
+    window.GradeDockCameraView?.close?.();
+    // On mobile, the recognition panel is below the camera/upload controls.
+    requestAnimationFrame(()=>scanPreviewPanel()?.scrollIntoView({behavior:'smooth',block:'start'}));
+  }
+
+  async function processCanvas(canvas, blob = null, useSaved = false) {
     try {
-      $('#scanStatusText').textContent = `Reading ${classLabel(cls)} paper: registration markers and bubbles…`;
-      $('#scanConfidence').textContent = 'Scanning';
-      $('#scanConfidence').className = 'badge neutral';
-      const key = await Store.examKey(exam.id);
-      if (key.length !== Number(exam.question_count) || key.some(x => !x)) {
-        throw new Error('This exam does not have a complete answer key yet. Open Exams → Set / Update Answer Key, then upload the completed Excel key before scanning.');
+      if (!useSaved) showCapturedPhoto(canvas, blob);
+      else {
+        $('#scanIssuePanel').classList.add('hidden');
+        $('#scanStatusText').textContent = 'Retrying this photo…';
       }
-      const result = window.GradeDockScanner.analyze(canvas, exam, key);
-      state.scan = { ...result, exam, key, classId: cls.id, className: classLabel(cls) };
-      state.scanImageBlob = blob;
+      const context = scanContext();
+      if (!context.cls || !context.exam) {
+        throw new Error('Select both a Section / Class and an Exam before scanning. Your photo is saved here; select them and tap Retry this photo.');
+      }
+      const {cls, exam}=context;
+      $('#scanStatusText').textContent = `Reading ${classLabel(cls)} paper: checking answer key and bubbles…`;
+      const key = await Store.examKey(exam.id);
+      if (!Array.isArray(key) || key.length !== Number(exam.question_count) || key.some(x=>!x)) {
+        throw new Error('This exam does not have a complete answer key yet. Open Exams → Set / Update Answer Key and save all correct answers before scanning.');
+      }
+      // Give the browser one paint before the expensive synchronous OMR work.
+      await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
+      const result=window.GradeDockScanner.analyze(canvas,exam,key);
+      state.scan={...result,exam,key,classId:cls.id,className:classLabel(cls)};
+      state.scanImageBlob=blob;
       renderScanResult();
-      const activeScan = state.scan;
-      window.GradeDockScanner.readStudentName(canvas, result.homography, result.orientationTransform).then(ocr => {
-        if (state.scan !== activeScan) return;
-        const input = $('#scannedStudentName');
-        const note = $('#nameOcrStatus');
-        if (!input || !note) return;
-        if (ocr.text) {
-          if (!input.value.trim()) input.value = ocr.text;
-          note.textContent = `Detected name: ${ocr.text}. Please verify before saving.`;
-          note.className = 'ocr-success';
-        } else if (ocr.available === false) {
-          note.textContent = 'Automatic name reading is unavailable. Type the name manually.';
-          note.className = 'ocr-warn';
-        } else {
-          note.textContent = 'I could not read the handwriting clearly. Type or correct the name manually.';
-          note.className = 'ocr-warn';
-        }
-      });
+      $('#scanPhotoArea').classList.add('is-success');
+      $('#scanPhotoTitle').textContent = 'Scanned photo';
+      $('#scanIssuePanel').classList.add('hidden');
+      window.GradeDockCameraView?.close?.();
+      requestAnimationFrame(()=>scanPreviewPanel()?.scrollIntoView({behavior:'smooth',block:'start'}));
+      const activeScan=state.scan;
+      // Name OCR is optional and must never erase a successful score.
+      Promise.resolve().then(()=>window.GradeDockScanner.readStudentName(canvas,result.homography,result.orientationTransform)).then(ocr=>{
+        if(state.scan!==activeScan)return;
+        const input=$('#scannedStudentName'),note=$('#nameOcrStatus');
+        if(!input||!note)return;
+        if(ocr?.text){if(!input.value.trim())input.value=ocr.text;note.textContent=`Detected name: ${ocr.text}. Please verify before saving.`;note.className='ocr-success';}
+        else if(ocr?.available===false){note.textContent='Automatic name reading is unavailable. Type the name manually.';note.className='ocr-warn';}
+        else {note.textContent='I could not read the handwriting clearly. Type or correct the name manually.';note.className='ocr-warn';}
+      }).catch(err=>{const note=$('#nameOcrStatus');if(note)note.textContent='Name reading unavailable. Please select the student manually.';console.warn('Optional OCR failed:',err);});
       return true;
-    } catch (err) {
-      state.scan = null;
-      $('#scanConfidence').textContent = 'Needs retake';
-      $('#scanConfidence').className = 'badge warn';
-      $('#scanStatusText').textContent = err.message;
-      window.GradeDockCameraView?.close();
-      // Scanning failures are already shown in the recognition preview. Avoid a
-      // second oversized error popup on top of the live camera.
-      $('#scanEmpty').classList.remove('hidden');
-      $('#scanResult').classList.add('hidden');
-      const qualityIssue = /printed item numbers|corner (?:squares|marks)|answer circles|too tilted|matching GradeDock sheet/i.test(err.message || '');
-      if (!qualityIssue) toast(err.message, 'warn');
+    } catch(err) {
+      state.scan=null;
+      showScanIssue(err);
+      console.warn('GradeDock scan could not complete:',err);
       return false;
     }
   }
@@ -1083,6 +1130,9 @@
   function retryScan() {
     state.scan = null;
     state.scanImageBlob = null;
+    state.lastScanSource = null;
+    $('#scanPhotoArea').classList.add('hidden');
+    $('#scanIssuePanel').classList.add('hidden');
     $('#scanResult').classList.add('hidden');
     $('#scanResult').innerHTML = '';
     $('#scanEmpty').classList.remove('hidden');
@@ -1157,6 +1207,9 @@
       await Store.saveResult(payload, r.answers, state.scanImageBlob);
       state.scan = null;
       state.scanImageBlob = null;
+      state.lastScanSource = null;
+      $('#scanPhotoArea').classList.add('hidden');
+      $('#scanIssuePanel').classList.add('hidden');
       $('#scanResult').classList.add('hidden');
       $('#scanEmpty').classList.remove('hidden');
       $('#scanStatusText').textContent = `Saved to ${r.className}. Ready for the next paper.`;
@@ -1658,6 +1711,18 @@
       } catch (err) { closeModal(); toast(err.message, 'warn'); }
     };
 
+    $('#retryPhotoBtn').onclick = async () => {
+      if (!state.lastScanSource) return showScanIssue(new Error('Please take or upload a photo first.'));
+      const {canvas,blob}=state.lastScanSource;
+      const btn=$('#retryPhotoBtn');btn.disabled=true;btn.textContent='Scanning…';
+      try {await processCanvas(canvas,blob,true);}
+      finally{btn.textContent='↻ Retry this photo';btn.disabled=false;}
+    };
+    $('#editScanKeyBtn').onclick = () => {
+      const id=$('#scanExam')?.value;
+      if(id)manageExamKey(id);
+    };
+
     $('#cameraTab').onclick = () => switchScanMode('camera');
     $('#uploadTab').onclick = () => switchScanMode('upload');
 
@@ -1757,8 +1822,7 @@
         if(ok) stopCameraAssist();
         else if(window.GradeDockScanner?.stream) startCameraAssist();
       } catch(err) {
-        $('#scanStatusText').textContent=err.message;
-        toast(err.message,'warn');
+        showScanIssue(err);
         if(window.GradeDockScanner?.stream)startCameraAssist();
       } finally {btn.disabled=!window.GradeDockScanner?.stream;btn.textContent='📸 Capture & check';}
     };
@@ -1766,13 +1830,11 @@
     $('#cameraFallbackFile').onchange = async e => {
       const file = e.target.files[0];
       if (!file) return;
-      if (!requireScanContext()) { e.target.value = ''; return; }
       try {
         const canvas = await window.GradeDockScanner.fileToCanvas(file, $('#captureCanvas'));
         await processCanvas(canvas, file);
       } catch (err) {
-        $('#scanStatusText').textContent = err.message;
-        toast(err.message, 'warn');
+        showScanIssue(err);
       }
       e.target.value = '';
     };
@@ -1780,11 +1842,10 @@
     $('#scanFile').onchange = async e => {
       const file = e.target.files[0];
       if (!file) return;
-      if (!requireScanContext()) { e.target.value = ''; return; }
       try {
         const canvas=await window.GradeDockScanner.fileToCanvas(file,$('#captureCanvas'));
         await processCanvas(canvas,file);
-      } catch(err) {$('#scanStatusText').textContent=err.message;toast(err.message,'warn');}
+      } catch(err) {showScanIssue(err);}
       e.target.value='';
     };
 
@@ -1794,11 +1855,11 @@
       e.preventDefault();
       e.currentTarget.classList.remove('drag');
       const file = e.dataTransfer.files[0];
-      if (!file || !requireScanContext()) return;
+      if (!file) return;
       try {
         const canvas=await window.GradeDockScanner.fileToCanvas(file,$('#captureCanvas'));
         await processCanvas(canvas,file);
-      } catch(err) {$('#scanStatusText').textContent=err.message;toast(err.message,'warn');}
+      } catch(err) {showScanIssue(err);}
     };
 
     $('#profileForm').onsubmit = async e => {

@@ -748,3 +748,17 @@ body.gd-camera-fullview-active{overflow:hidden!important;overscroll-behavior:non
   #cameraMode.is-fullview .camera-actions .btn{font-size:10px!important;padding:7px 2px!important}
   #cameraMode.is-fullview .camera-actions #captureBtn{font-size:15px!important}
 }
+
+/* v3.31: every capture/upload must produce a persistent photo or error preview. */
+.scan-photo-area{margin:12px 16px 8px;padding:12px;background:#f8fafc;border:1px solid #dbe4ef;border-radius:12px}
+.scan-photo-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;font-size:12px;color:#334155}
+.scan-photo-heading span{font-size:11px;color:#64748b}
+#scanPhotoPreview{display:block;max-width:100%;height:auto;max-height:280px;width:auto;object-fit:contain;margin:auto;background:white;border-radius:7px;box-shadow:0 2px 7px #17203310}
+.scan-photo-area.is-success #scanPhotoPreview{max-height:125px}
+.scan-issue-panel{margin:12px 16px 18px;padding:15px;border:1px solid #f5d19e;border-radius:12px;background:#fffaf0;color:#854d0e}
+.scan-issue-panel strong{display:block;font-size:14px}
+.scan-issue-panel p{line-height:1.5;margin:8px 0;font-size:12px;overflow-wrap:anywhere}
+#scanIssueHint{color:#715127}
+.scan-issue-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.scan-issue-actions button{flex:1 1 140px;font-size:12px;min-height:40px}
+@media(max-width:760px){.scan-photo-area,.scan-issue-panel{margin:10px}.scan-preview-panel{scroll-margin-top:65px}}
