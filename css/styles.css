@@ -762,3 +762,7 @@ body.gd-camera-fullview-active{overflow:hidden!important;overscroll-behavior:non
 .scan-issue-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .scan-issue-actions button{flex:1 1 140px;font-size:12px;min-height:40px}
 @media(max-width:760px){.scan-photo-area,.scan-issue-panel{margin:10px}.scan-preview-panel{scroll-margin-top:65px}}
+
+/* v3.33: show precisely the darker image the bubble scanner reads. */
+.scan-photo-heading #toggleScanPhotoBtn{font-size:11px;min-height:30px;padding:5px 10px;border-radius:8px}
+.scan-photo-heading #scanPhotoMeta{flex:1 1 auto}

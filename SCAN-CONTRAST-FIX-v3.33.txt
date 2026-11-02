@@ -1,0 +1,9 @@
+GradeDock v3.33 — contrast enhancement for camera and uploaded answer sheets (2026-11-02)
+
+- Added adaptive local background equalization that darkens weak printed circle outlines and light gray grid/border lines for OMR, without modifying the original source photo.
+- Changed orientation detection to use a coarse header-versus-footer ink-density check alongside printed circles, preventing some 180° errors with faint sheets.
+- Recognition Preview now shows the enhanced photo used by the OMR scanner by default. Tap Show original to compare.
+- Camera capture, Take photo, and Upload all use the same enhancement, with cached results for retries.
+- The four-dot manual selection remains removed. Your existing printed GradeDock sheets do not need to be reprinted.
+- If physical image detail has been lost through blur or compression, enhancement cannot restore it. Uncertain marks are still not automatically graded.
+- Supabase credentials, exam answers, templates, and SQL were not altered.

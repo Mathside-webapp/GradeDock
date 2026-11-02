@@ -417,6 +417,71 @@
       }
     },
 
+    // Build a local-contrast copy of the photo for scanner measurements.
+    // Lighting / gray photocopy backgrounds are flattened while faint printed
+    // circle borders and row lines get darker. The original image is retained
+    // for student-name OCR and never modified.
+    enhanceForScanning(canvas) {
+      if (!this._enhancementCache) this._enhancementCache = new WeakMap();
+      if (this._enhancementCache.has(canvas)) return this._enhancementCache.get(canvas);
+      const width=canvas.width, height=canvas.height;
+      if (!width || !height) throw new Error('Photo has no image pixels.');
+      const source=canvas.getContext('2d',{willReadFrequently:true}).getImageData(0,0,width,height);
+      // Estimate slow illumination changes from a small, uniformly sampled
+      // image. This avoids expensive full-resolution neighborhood searches.
+      const down=Math.max(4,Math.ceil(Math.max(width,height)/320));
+      const bw=Math.max(2,Math.ceil(width/down)),bh=Math.max(2,Math.ceil(height/down));
+      const tiny=document.createElement('canvas');tiny.width=bw;tiny.height=bh;
+      const tc=tiny.getContext('2d',{willReadFrequently:true});
+      tc.drawImage(canvas,0,0,bw,bh);
+      const pixels=tc.getImageData(0,0,bw,bh).data;
+      const integ=new Float64Array((bw+1)*(bh+1));
+      const st=bw+1;
+      for(let y=0;y<bh;y++){
+        let sum=0;
+        for(let x=0;x<bw;x++){
+          const k=(y*bw+x)*4;
+          sum+=pixels[k]*.299+pixels[k+1]*.587+pixels[k+2]*.114;
+          integ[(y+1)*st+x+1]=integ[y*st+x+1]+sum;
+        }
+      }
+      const radius=Math.max(6,Math.round(60/down));
+      const background=new Float32Array(bw*bh);
+      for(let y=0;y<bh;y++){
+        const y0=Math.max(0,y-radius),y1=Math.min(bh-1,y+radius);
+        for(let x=0;x<bw;x++){
+          const x0=Math.max(0,x-radius),x1=Math.min(bw-1,x+radius);
+          background[y*bw+x]=(integ[(y1+1)*st+x1+1]-integ[y0*st+x1+1]
+            -integ[(y1+1)*st+x0]+integ[y0*st+x0])/((x1-x0+1)*(y1-y0+1));
+        }
+      }
+      const result=document.createElement('canvas');result.width=width;result.height=height;
+      const output=result.getContext('2d',{willReadFrequently:true});
+      const frame=output.createImageData(width,height);
+      const original=source.data, dest=frame.data;
+      for(let y=0;y<height;y++){
+        const by=Math.min(bh-1,Math.floor(y/down)),y2=Math.min(bh-1,by+1),fy=y/down-by;
+        for(let x=0;x<width;x++){
+          const bx=Math.min(bw-1,Math.floor(x/down)),x2=Math.min(bw-1,bx+1),fx=x/down-bx;
+          const a=background[by*bw+bx]*(1-fx)+background[by*bw+x2]*fx;
+          const b=background[y2*bw+bx]*(1-fx)+background[y2*bw+x2]*fx;
+          const bg=a*(1-fy)+b*fy;
+          const i=(y*width+x)*4;
+          const gray=original[i]*.299+original[i+1]*.587+original[i+2]*.114;
+          const detail=Math.max(0,bg-gray-2);
+          // Saturate the page to white and darken only *locally darker*
+          // features. Contrast boost is bounded so JPEG noise is not amplified
+          // into false filled bubbles; bubble decisions still have safeguards.
+          const improved=Math.max(0,Math.min(255,255-2.55*detail));
+          dest[i]=dest[i+1]=dest[i+2]=improved;
+          dest[i+3]=255;
+        }
+      }
+      output.putImageData(frame,0,0);
+      this._enhancementCache.set(canvas,result);
+      return result;
+    },
+
     analyze(canvas, exam, answerKey=[], options={}) {
       const markers = options.markers || this.findMarkers(canvas);
       if (!Array.isArray(markers) || markers.length !== 4 || markers.some(p => !Number.isFinite(p.x)||!Number.isFinite(p.y))) {
@@ -433,8 +498,9 @@
       const dst = L.markers.map(m => [m.x, m.y]);
       const H = this.solveHomography(dst, src);
 
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const enhanced=this.enhanceForScanning(canvas);
+      const ctx = enhanced.getContext('2d', { willReadFrequently: true });
+      const image = ctx.getImageData(0, 0, enhanced.width, enhanced.height);
       const pix = image.data;
 
       // Registration is geometric. Never require OCR of tiny item numbers:
@@ -529,8 +595,20 @@
           }
           for(let x=left+24;x<right-14;x+=27)edge(x,334,0,8);
         }
+        // The centered exam title is printed near the top, not at the bottom.
+        // Its coarse ink density breaks a 180-degree ambiguity when thin
+        // circles have become too faint for the ring score alone.
+        const band=(y0,y1)=>{
+          let ink=0,n=0;
+          for(let y=y0;y<y1;y+=4)for(let x=160;x<840;x+=9){
+            ink+=Math.max(0,240-at(x,y));n++;
+          }
+          return ink/(Math.max(1,n)*255);
+        };
+        const heading=band(75,150)-band(1280,1350);
         return {transform, ring:ringTotal/Math.max(1,rings),frame:frameTotal/Math.max(1,frames),
-          score:.75*ringTotal/Math.max(1,rings)+.25*frameTotal/Math.max(1,frames)};
+          score:.75*ringTotal/Math.max(1,rings)+.25*frameTotal/Math.max(1,frames)
+            +clamp(heading*0.8,-.07,.07)};
       };
       const orientationCandidates=['identity','rotate90','rotate180','rotate270',
         'mirror0','mirror90','mirror180','mirror270']

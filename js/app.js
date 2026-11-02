@@ -913,6 +913,26 @@
 
   function scanPreviewPanel() { return $('.scan-preview-panel'); }
 
+  function drawScanPhotoPreview() {
+    const source=state.lastScanSource;
+    if(!source)return;
+    const showEnhanced=Boolean(source.showEnhanced && source.enhancedCanvas);
+    const selected=showEnhanced?source.enhancedCanvas:source.canvas;
+    const preview=$('#scanPhotoPreview');
+    const scale=Math.min(1,580/Math.max(selected.width,selected.height));
+    preview.width=Math.max(1,Math.round(selected.width*scale));
+    preview.height=Math.max(1,Math.round(selected.height*scale));
+    preview.getContext('2d').drawImage(selected,0,0,preview.width,preview.height);
+    const toggle=$('#toggleScanPhotoBtn');
+    if(toggle){
+      toggle.classList.toggle('hidden',!source.enhancedCanvas);
+      toggle.textContent=showEnhanced?'Show original':'Show enhanced';
+      toggle.setAttribute('aria-pressed',String(showEnhanced));
+    }
+    $('#scanPhotoMeta').textContent=
+      `${selected.width} × ${selected.height} pixels · ${showEnhanced?'Darkened lines':'Original'}`;
+  }
+
   function showCapturedPhoto(canvas, blob) {
     if (!canvas?.width || !canvas?.height) throw new Error('This picture is empty. Try taking another photo.');
     // Keep a separate copy: the hidden camera canvas is reused for later captures.
@@ -920,14 +940,13 @@
     saved.width = canvas.width;
     saved.height = canvas.height;
     saved.getContext('2d').drawImage(canvas, 0, 0);
-    state.lastScanSource = {canvas:saved, blob};
-    const preview=$('#scanPhotoPreview');
-    const scale=Math.min(1,580/Math.max(canvas.width,canvas.height));
-    preview.width=Math.max(1,Math.round(canvas.width*scale));
-    preview.height=Math.max(1,Math.round(canvas.height*scale));
-    preview.getContext('2d').drawImage(saved,0,0,preview.width,preview.height);
+    state.lastScanSource = {canvas:saved, blob, enhancedCanvas:null, showEnhanced:true};
+    // Apply the same image enhancement as the grader, and show what it sees.
+    // This never overwrites the original image used for student-name reading.
+    state.lastScanSource.enhancedCanvas=window.GradeDockScanner.enhanceForScanning(saved);
+    drawScanPhotoPreview();
     $('#scanPhotoArea').classList.remove('hidden','is-success');
-    $('#scanPhotoTitle').textContent = 'Photo received';
+    $('#scanPhotoTitle').textContent = 'Photo ready for scanning';
     $('#scanPhotoMeta').textContent = `${canvas.width} × ${canvas.height} pixels`;
     $('#scanIssuePanel').classList.add('hidden');
     $('#scanEmpty').classList.add('hidden');
@@ -946,7 +965,7 @@
     $('#scanIssueHint').textContent=keyProblem
       ? 'Open Exams → Set / Update Answer Key. Save an answer for every item, then retry this same photo.'
       : paperProblem
-        ? 'Use a GradeDock-generated answer sheet for the selected exam. Keep the whole paper flat, sharp, and visible. The picture stays here so you can see what was captured.'
+        ? 'Your GradeDock printed template is supported. The photo has already been enhanced to darken faint lines; if recognition still fails, the paper may be blurry, angled, or too low-resolution. Switch between enhanced and original views to compare.'
         : 'Check your selected section and exam, then try the same photo again. You can also select a new picture.';
     $('#scanIssuePanel').classList.remove('hidden');
     $('#editScanKeyBtn').classList.toggle('hidden',!keyProblem || !$('#scanExam').value);
@@ -980,7 +999,7 @@
       }
       // Give the browser one paint before the expensive synchronous OMR work.
       await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
-      const result=window.GradeDockScanner.analyze(canvas,exam,key);
+      const result=window.GradeDockScanner.analyze(state.lastScanSource?.canvas || canvas,exam,key);
       state.scan={...result,exam,key,classId:cls.id,className:classLabel(cls)};
       state.scanImageBlob=blob;
       renderScanResult();
@@ -1713,6 +1732,11 @@
       } catch (err) { closeModal(); toast(err.message, 'warn'); }
     };
 
+    $('#toggleScanPhotoBtn').onclick = () => {
+      if(!state.lastScanSource)return;
+      state.lastScanSource.showEnhanced=!state.lastScanSource.showEnhanced;
+      drawScanPhotoPreview();
+    };
     $('#retryPhotoBtn').onclick = async () => {
       if (!state.lastScanSource) return showScanIssue(new Error('Please take or upload a photo first.'));
       const {canvas,blob}=state.lastScanSource;
