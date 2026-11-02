@@ -1015,8 +1015,10 @@
         $('#scanConfidence').textContent = `${r.confidence}% clear responses`;
     $('#scanConfidence').className = `badge ${r.uncertain ? 'warn' : 'good'}`;
     const mirrorNote = r.cameraMirrorCorrected ? ' Camera orientation was corrected automatically.' : '';
-    $('#scanStatusText').textContent = r.uncertain
-      ? `${r.uncertain} response${r.uncertain === 1 ? '' : 's'} need teacher confirmation before saving to ${r.className}.${mirrorNote}`
+    $('#scanStatusText').textContent = r.orientationAmbiguous
+      ? 'The paper layout was detected, but orientation needs review. Verify all answers before saving.'
+      : r.uncertain
+        ? `${r.uncertain} response${r.uncertain === 1 ? '' : 's'} need teacher confirmation before saving to ${r.className}.${mirrorNote}`
       : `All responses were read clearly. This result will be saved to ${r.className}.${mirrorNote}`;
 
     const choices = ['', ...Array.from({ length: Number(r.exam.choice_count || 4) }, (_, i) => String.fromCharCode(65 + i))];
@@ -1030,7 +1032,7 @@
     $('#scanResult').innerHTML = `
       <div class="scan-section-pill">SECTION: <strong>${esc(r.className)}</strong></div>
       <div class="score-hero"><div><small>SCORE</small><strong id="liveScore">${r.correct}/${r.total}</strong><span id="livePct">${r.percentage}%</span></div><div class="score-ring">${r.percentage}%</div></div>
-      <div class="review-help"><strong>Review highlighted items.</strong><span>Check the selected answers, especially Multiple?, Blank?, or Light mark. Confirm items individually or use Confirm All after reviewing. GradeDock will not save until all are confirmed.</span><div class="review-bulk-actions"><span id="reviewPendingCount">${r.uncertain} item${r.uncertain === 1 ? '' : 's'} to confirm</span><button type="button" id="confirmAllReviewBtn" class="btn btn-soft" ${r.uncertain ? '' : 'disabled'}>✓ Confirm All</button></div></div>
+      <div class="review-help"><strong>${r.orientationAmbiguous ? 'Review all answers: page direction not certain' : 'Review highlighted items.'}</strong><span>Check the selected answers, especially Multiple?, Blank?, or Light mark. Confirm items individually or use Confirm All after reviewing. GradeDock will not save until all are confirmed.</span><div class="review-bulk-actions"><span id="reviewPendingCount">${r.uncertain} item${r.uncertain === 1 ? '' : 's'} to confirm</span><button type="button" id="confirmAllReviewBtn" class="btn btn-soft" ${r.uncertain ? '' : 'disabled'}>✓ Confirm All</button></div></div>
       <div class="answer-review">${r.answers.map(a => {
         const needsConfirm = a.state !== 'ok';
         const options = choices.map(x => `<option value="${x}" ${x === a.answer ? 'selected' : ''}>${x || 'Blank'}</option>`).join('');

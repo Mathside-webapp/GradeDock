@@ -1,0 +1,7 @@
+GradeDock v3.32 — 2026-11-02
+
+Fixed orientation recognition incorrectly requiring readable item numbers on GradeDock-generated answer sheets. The scanner now uses printed bubble circles and box/header outlines as orientation landmarks (no tiny text OCR). Existing sheets do not need to be reprinted.
+
+When orientation is ambiguous, no answers are automatically accepted; manual review is required to prevent incorrect grades. All 8 rotated/mirrored orientations, and 40-item PDF and PNG renderings, were checked with synthetic samples. Actual original-resolution student photos were not supplied for device testing.
+
+Updated PWA cache to deliver the scanner fix.

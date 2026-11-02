@@ -437,16 +437,9 @@
       const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const pix = image.data;
 
-      // Clean reference sheet. It is used for two jobs:
-      //   1) ignore the printed bubble outline/letters when measuring graphite/ink;
-      //   2) detect a mirrored camera frame before reading answers.
-      const reference = window.GradeDockSheet.renderCanvas({
-        title: '',
-        question_count: Number(exam.question_count),
-        choice_count: Number(exam.choice_count)
-      }, '', 1);
-      const rctx = reference.getContext('2d', { willReadFrequently: true });
-      const refData = rctx.getImageData(0, 0, reference.width, reference.height).data;
+      // Registration is geometric. Never require OCR of tiny item numbers:
+      // even GradeDock-generated sheets lose that detail in ordinary phone photos.
+      // The printed bubble circles and section frames provide stronger landmarks.
 
       const clamp = (v, a=0, b=1) => Math.max(a, Math.min(b, v));
       const quantile = (values, q) => {
@@ -477,13 +470,6 @@
         const b = g(x0,y1) * (1-tx) + g(x1,y1) * tx;
         return a * (1-ty) + b * ty;
       };
-      const grayAtReference = (x, y) => {
-        const rx = Math.max(0, Math.min(reference.width - 1, Math.round(x)));
-        const ry = Math.max(0, Math.min(reference.height - 1, Math.round(y)));
-        const i = (ry * reference.width + rx) * 4;
-        return refData[i] * .299 + refData[i + 1] * .587 + refData[i + 2] * .114;
-      };
-
       // Estimate paper brightness from the captured page. We use a high quantile,
       // not a fixed 255, so shadows and slightly gray paper do not destroy the
       // contrast calculations.
@@ -495,40 +481,67 @@
       }
       const pagePaper = Math.max(120, quantile(pageBrightnessSamples, .82));
 
-      // The old scanner could read A as D when the camera feed was horizontally
-      // mirrored. The four corner blocks cannot expose that because they are
-      // symmetric. Detect the orientation from the asymmetric printed item-number
-      // columns, then keep that correction for every bubble and OCR sample.
+      // Registration squares are symmetric: they locate the sheet, but do not
+      // establish its reading direction. Compare the actual *printed layout*
+      // across all 8 orientations; no OCR, tiny number decoding or answer-key
+      // matching is used. Circle outlines, box borders and header rules are
+      // independent of whether the student shaded A, B, C, or D.
       const orientationScore = (transform) => {
-        let score = 0, count = 0;
-        const itemStep = Math.max(1, Math.floor(L.items.length / 22));
-        for (let n = 0; n < L.items.length; n += itemStep) {
-          const item = L.items[n];
-          for (let dy = -8; dy <= 8; dy += 2) {
-            for (let dx = -15; dx <= 15; dx += 2) {
-              const cx = item.numberX + dx, cy = item.y + dy;
-              const rg = grayAtReference(cx, cy);
-              if (rg > 150) continue; // only compare known printed-number ink
-              const t = this.transformCanonicalPoint(cx, cy, transform);
-              const p = this.map(H, t.x, t.y);
-              const sg = grayAtSource(p.x, p.y);
-              const darkness = clamp((pagePaper - sg) / Math.max(65, pagePaper - 30));
-              // Darker reference pixels carry slightly more weight.
-              score += darkness * (1 + (150 - rg) / 180);
-              count++;
+        const at=(x,y)=>{
+          const xy=this.transformCanonicalPoint(x,y,transform);
+          const p=this.map(H,xy.x,xy.y);
+          return grayAtSource(p.x,p.y);
+        };
+        let ringTotal=0, rings=0;
+        const step=Math.max(1,Math.floor(L.items.length/20));
+        for(let n=0;n<L.items.length;n+=step){
+          const item=L.items[n];
+          for(const b of item.bubbles){
+            for(let k=0;k<12;k++){
+              const a=k*Math.PI/6,co=Math.cos(a),si=Math.sin(a);
+              // Printed ring has radius 12. The area immediately outside it
+              // should be paper regardless of the filled choice.
+              const inside=at(b.x+12*co,b.y+12*si);
+              const outside=at(b.x+18*co,b.y+18*si);
+              ringTotal+=clamp((outside-inside)/90,-.6,1);
+              rings++;
             }
           }
         }
-        return count ? score / count : 0;
+        // Top header and rectangular answer panels are not rotationally
+        // symmetric. Compare known dark border lines with nearby white paper.
+        let frameTotal=0,frames=0;
+        const edge=(x,y,ox,oy)=>{
+          frameTotal+=clamp((at(x+ox,y+oy)-at(x,y))/90,-.6,1);
+          frames++;
+        };
+        // Top name / section lines and direction-box border.
+        for(let x=125;x<595;x+=25)edge(x,190,0,-8);
+        for(let x=692;x<916;x+=25)edge(x,190,0,-8);
+        for(let x=86;x<918;x+=28)edge(x,215,0,-8);
+        // Both column outlines; different positions for single-column exams.
+        const lefts=L.columns===2?[58,526]:[252];
+        const widths=L.columns===2?[416,416]:[496];
+        for(let j=0;j<lefts.length;j++){
+          const left=lefts[j],right=left+widths[j];
+          for(let y=370;y<1240;y+=38){
+            edge(left,y,9,0);edge(right,y,-9,0);
+          }
+          for(let x=left+24;x<right-14;x+=27)edge(x,334,0,8);
+        }
+        return {transform, ring:ringTotal/Math.max(1,rings),frame:frameTotal/Math.max(1,frames),
+          score:.75*ringTotal/Math.max(1,rings)+.25*frameTotal/Math.max(1,frames)};
       };
-      const orientationCandidates = ['identity','rotate90','rotate180','rotate270','mirror0','mirror90','mirror180','mirror270']
-        .map(transform => ({transform, score:orientationScore(transform)}))
-        .sort((a,b)=>b.score-a.score);
-      const winner=orientationCandidates[0], runnerUp=orientationCandidates[1];
-      if (winner.score < .25 || winner.score-runnerUp.score < .12) {
-        throw new Error('The printed item numbers are not clear enough to determine the sheet orientation. Use the matching GradeDock sheet, place it upright, and retake a sharper photo.');
-      }
+      const orientationCandidates=['identity','rotate90','rotate180','rotate270',
+        'mirror0','mirror90','mirror180','mirror270']
+        .map(orientationScore).sort((a,b)=>b.score-a.score);
+      const winner=orientationCandidates[0],runnerUp=orientationCandidates[1];
+      // Do not reject a photograph because fine print is blurry. When the
+      // structural score is inconclusive the sheet may be blurred, too small,
+      // or missing; grading still has the independent circle alignment gate
+      // below, and every low-confidence answer must be reviewed manually.
       const orientationTransform=winner.transform;
+      const orientationAmbiguous=winner.score<.045 || winner.score-runnerUp.score<.014;
       const normalOrientationScore=orientationCandidates.find(x=>x.transform==='identity').score;
       const mirroredOrientationScore=orientationCandidates.find(x=>x.transform==='mirror0').score;
 
@@ -579,7 +592,7 @@
         }
       }
       if (alignedRows < Math.ceil(L.items.length * .70)) {
-        throw new Error('The answer circles do not line up clearly with this exam. Check the selected exam/item count, flatten the paper, and retake a sharper photo with all four corner squares visible.');
+        throw new Error('GradeDock found the printed corner marks, but the bubble-circle outlines could not be aligned confidently. Try uploading the original full-resolution photo, or retake it with the entire page sharp and evenly lit.');
       }
 
       const bubbleInk = (cx, cy, offset) => {
@@ -644,7 +657,9 @@
         } else if (best.score>=markThreshold) {
           state='low';
         }
-        if (rowOffsets.get(row.item.number).score <= .10) {
+        if (rowOffsets.get(row.item.number).score <= .10 || orientationAmbiguous) {
+          // An uncertain physical orientation must never be automatically scored.
+          // Offer the teacher a review rather than guessing by the answer key.
           answer=''; state='low';
         }
         if (state!=='ok') uncertain++;
@@ -680,6 +695,7 @@
         homography: H,
         orientationTransform,
         cameraMirrorCorrected: orientationTransform !== 'identity',
+        orientationAmbiguous,
         orientationScores: { normal: normalOrientationScore, mirrored: mirroredOrientationScore },
         alignment: { alignedRows, totalRows: L.items.length },
         sensitivity: {
